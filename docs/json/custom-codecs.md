@@ -152,6 +152,45 @@ Registering a custom codec for a `JsonSubTypes` base replaces that base's subtyp
 Registering one for a listed subtype is supported by the two wrapper inclusions but not by inline
 property inclusion.
 
+## Reading raw values
+
+`JsonReader.readRawValue()` reads the next complete JSON value and returns its exact source text
+without decoding it. It is the read-side counterpart of `JsonRawValue` and of the writers'
+`writeRawValue(String)`, for codecs that pass a nested value to another parser or keep it opaque:
+
+```java
+import org.apache.fory.json.codec.AbstractJsonValueCodec;
+import org.apache.fory.json.reader.JsonReader;
+import org.apache.fory.json.writer.JsonWriter;
+
+/** Accepts an object either inline or as a JSON string that contains the object text. */
+public final class ObjectTextCodec extends AbstractJsonValueCodec<String> {
+  @Override
+  public void write(JsonWriter writer, String value) {
+    if (value == null) {
+      writer.writeNull();
+    } else {
+      writer.writeString(value);
+    }
+  }
+
+  @Override
+  public String read(JsonReader reader) {
+    if (reader.tryReadNullToken()) {
+      return null;
+    }
+    return reader.peekToken() == '"' ? reader.readString() : reader.readRawValue();
+  }
+}
+```
+
+Leading whitespace is skipped and is not part of the result. The value keeps its inner whitespace,
+string quotes, and escape sequences exactly as in the input, and a JSON `null` token is returned as
+the text `null`, not as Java null. The reader stops right after the value, so the enclosing
+property, element, or root parse continues normally. The value is validated like `skipValue()`,
+including string escapes, UTF-8 input, and the configured maximum depth counted from the current
+nesting level. The returned String is a leaf value and is not charged to the graph-memory budget.
+
 ## Custom empty values
 
 `NON_EMPTY` calls the selected codec's `isEmpty(JsonWriter writer, T value)` for non-null values

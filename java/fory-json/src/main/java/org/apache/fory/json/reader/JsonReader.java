@@ -719,6 +719,28 @@ public abstract class JsonReader {
     return materializeNumber(readNumberAsString());
   }
 
+  /**
+   * Reads the next complete JSON value and returns its exact source text without decoding it.
+   *
+   * <p>This is the read-side counterpart of {@code JsonRawValue}: a custom codec can capture an
+   * object, array, string, number, boolean, or {@code null} token as it appears in the input, for
+   * example to hand a nested document to another JSON parser. Leading whitespace is skipped and not
+   * included; whitespace inside a container, string quotes, and escape sequences are kept verbatim;
+   * a JSON {@code null} token is returned as the text {@code "null"}, not as Java null. The reader
+   * stops immediately after the value, so the caller still consumes the following comma or closing
+   * delimiter as usual.
+   *
+   * <p>The value is validated with the same rules and the same configured maximum depth as {@link
+   * #skipValue()}, counted from the current nesting depth. The returned String is a leaf value and
+   * is not charged to the graph-memory budget.
+   */
+  public final String readRawValue() {
+    skipWhitespace();
+    int start = position;
+    skipValue();
+    return rawText(start, position);
+  }
+
   private String readNumberToken() {
     int start = position;
     scanNumberToken();
@@ -3281,6 +3303,15 @@ public abstract class JsonReader {
   }
 
   protected abstract String slice(int start, int end);
+
+  /**
+   * Returns the source text of an already validated value span. Unlike {@link #slice(int, int)},
+   * which only receives ASCII token spans, the span may contain decoded string content in the
+   * input's own encoding.
+   */
+  protected String rawText(int start, int end) {
+    return slice(start, end);
+  }
 
   private static final class NumericWorkspace {
     private long[] bigIntegerBuffer = new long[4];
