@@ -119,6 +119,7 @@ import org.apache.fory.json.codec.GeneratedJsonSubtypeTable;
 import org.apache.fory.json.codec.GuavaCodecs;
 import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.JsonValueCodec;
+import org.apache.fory.json.codec.LenientReadCodec;
 import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.codec.ObjectCodec;
@@ -196,6 +197,7 @@ public final class JsonSharedRegistry {
   private final boolean escapeNonAscii;
   private final boolean failOnMissingRequiredProperties;
   private final boolean failOnDuplicateProperties;
+  private final int lenientRead;
   private final JsonByteArray.Format byteArrayFormat;
   private final ClassLoader classLoader;
   private final JsonMixinAnnotations mixinAnnotations;
@@ -258,6 +260,7 @@ public final class JsonSharedRegistry {
     escapeNonAscii = config.escapeNonAscii();
     failOnMissingRequiredProperties = config.failOnMissingRequiredProperties();
     failOnDuplicateProperties = config.failOnDuplicateProperties();
+    lenientRead = LenientReadCodec.mask(config.lenientRead());
     byteArrayFormat = config.byteArrayFormat();
     classLoader = config.classLoader();
     mixinAnnotations = new JsonMixinAnnotations(config);
@@ -1248,6 +1251,11 @@ public final class JsonSharedRegistry {
   /** Returns whether a repeated known property fails the read unless its class overrides it. */
   public boolean failOnDuplicateProperties() {
     return failOnDuplicateProperties;
+  }
+
+  /** Returns the builder's lenient read feature mask for properties without a declaration. */
+  public int lenientRead() {
+    return lenientRead;
   }
 
   /** Returns the default representation used when selecting ordinary byte-array codecs. */

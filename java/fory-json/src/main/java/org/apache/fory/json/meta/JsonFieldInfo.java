@@ -122,6 +122,7 @@ public final class JsonFieldInfo {
   private final boolean readUnboxedRequired;
   private final NullHandling onNullRead;
   private final NullHandling onContentNullRead;
+  private final int lenientRead;
   private JsonFieldKind writeKind;
   private JsonFieldKind readKind;
   private int writeKindId;
@@ -414,9 +415,11 @@ public final class JsonFieldInfo {
       boolean rawValue,
       boolean escapeNonAscii,
       NullHandling onNullRead,
-      NullHandling onContentNullRead) {
+      NullHandling onContentNullRead,
+      int lenientRead) {
     this.onNullRead = onNullRead;
     this.onContentNullRead = onContentNullRead;
+    this.lenientRead = lenientRead;
     this.name = name;
     this.escapeNonAscii = escapeNonAscii;
     // Inclusion, required-value, and read-index metadata become immutable with ObjectCodec.
@@ -566,6 +569,11 @@ public final class JsonFieldInfo {
     return onContentNullRead;
   }
 
+  /** Returns the effective lenient read mask, including the declaration flag. */
+  public int lenientRead() {
+    return lenientRead;
+  }
+
   /** Tests the input token before decoding so transparent codecs cannot erase null presence. */
   public boolean skipNullRead(JsonReader reader) {
     if (onNullRead == NullHandling.SET || !reader.tryReadNull()) {
@@ -597,7 +605,8 @@ public final class JsonFieldInfo {
             writesRawString(),
             escapeNonAscii,
             onNullRead,
-            onContentNullRead);
+            onContentNullRead,
+            lenientRead);
     copy.setReadIndex(readIndex());
     copy.defaultMethod = defaultMethod;
     copy.defaultDependencies = defaultDependencies;
@@ -980,6 +989,7 @@ public final class JsonFieldInfo {
                 typeResolver.getTypeInfo(readTypeRef), onContentNullRead);
         readUnboxedValueCodec = requireUnboxed(canonical, readRawType, "read");
         readOccurrenceTypeInfo = canonical;
+        typeResolver.withLenientRead(null, lenientRead, true, name);
         if (readUnboxedValueCodec instanceof DirectUnboxedValueCodec) {
           readTypeInfo = canonical;
         } else if (readUnboxedValueCodec instanceof TransparentUnboxedValueCodec) {
@@ -989,9 +999,15 @@ public final class JsonFieldInfo {
         }
       } else {
         readTypeInfo =
-            typeResolver.withContentNullRead(
-                selectedTypeInfo == null ? typeResolver.getTypeInfo(readTypeRef) : selectedTypeInfo,
-                onContentNullRead);
+            typeResolver.withLenientRead(
+                typeResolver.withContentNullRead(
+                    selectedTypeInfo == null
+                        ? typeResolver.getTypeInfo(readTypeRef)
+                        : selectedTypeInfo,
+                    onContentNullRead),
+                lenientRead,
+                selectedTypeInfo != null,
+                name);
         readOccurrenceTypeInfo = readTypeInfo;
       }
       readKind = readTypeInfo.kind();
@@ -1266,7 +1282,8 @@ public final class JsonFieldInfo {
         formatAnnotation,
         readUnboxedRequired,
         onNullRead,
-        onContentNullRead);
+        onContentNullRead,
+        lenientRead);
   }
 
   /** Assigns one already decoded value through this property's validated read sink. */

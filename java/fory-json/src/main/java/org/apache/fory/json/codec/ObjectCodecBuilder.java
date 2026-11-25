@@ -55,6 +55,7 @@ import org.apache.fory.json.annotation.JsonDuplicateProperties;
 import org.apache.fory.json.annotation.JsonFormat;
 import org.apache.fory.json.annotation.JsonIgnore;
 import org.apache.fory.json.annotation.JsonInclude;
+import org.apache.fory.json.annotation.JsonLenient;
 import org.apache.fory.json.annotation.JsonProperty;
 import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.annotation.JsonProperty.NullHandling;
@@ -173,6 +174,13 @@ final class ObjectCodecBuilder {
     if (anyBuilder != null && anyBuilder.hasJsonProperty) {
       throw new ForyJsonException(
           "@JsonProperty is not supported on JSON Any logical property "
+              + anyBuilder.name
+              + " on "
+              + type.getName());
+    }
+    if (anyBuilder != null && anyBuilder.lenientAnnotation != null) {
+      throw new ForyJsonException(
+          "@JsonLenient is not supported on JSON Any logical property "
               + anyBuilder.name
               + " on "
               + type.getName());
@@ -1565,7 +1573,8 @@ final class ObjectCodecBuilder {
               builder.formatAnnotation(),
               builder.creatorUnboxedRequired,
               builder.onNullRead(),
-              builder.explicitContentNullRead));
+              builder.explicitContentNullRead,
+              builder.lenientRead()));
     }
     JsonCreatorFieldInfo[] fieldArray = fields.toArray(new JsonCreatorFieldInfo[0]);
     rejectCreatorHashCollisions(fieldArray);
@@ -1683,6 +1692,7 @@ final class ObjectCodecBuilder {
         bindCreatorType(ownerType, creator, i, parameterTypes[i], builder);
         builder.mergeFormat(parameters[i]);
         builder.mergeCodec(parameters[i]);
+        builder.mergeLenient(parameters[i]);
         builder.mergeUnwrapped(parameters[i]);
         if (builder.isAny() && !builder.anyReadEnabled()) {
           throw new ForyJsonException(
@@ -1706,7 +1716,8 @@ final class ObjectCodecBuilder {
                   builder.formatAnnotation(),
                   builder.creatorUnboxedRequired,
                   builder.onNullRead(),
-                  builder.explicitContentNullRead));
+                  builder.explicitContentNullRead,
+                  builder.lenientRead()));
         }
       }
     } else {
@@ -1783,6 +1794,10 @@ final class ObjectCodecBuilder {
                 "@JsonUnwrapped creator property has no null value or content position: "
                     + jsonName);
           }
+          if (builder == null && annotations.has(parameters[i], JsonLenient.class)) {
+            throw new ForyJsonException(
+                "@JsonLenient is not supported on @JsonUnwrapped creator property " + jsonName);
+          }
           if (codecAnnotation != null || valueCodecClass != null || formatAnnotation != null) {
             throw new ForyJsonException(
                 "Value codecs are not supported on @JsonUnwrapped creator property " + jsonName);
@@ -1817,9 +1832,10 @@ final class ObjectCodecBuilder {
                       ? effectiveNullHandling(
                           property.onNullRead(), annotations.registry.onNullRead())
                       : builder.onNullRead(),
+                  builder == null ? property.onContentNullRead() : builder.explicitContentNullRead,
                   builder == null
-                      ? property.onContentNullRead()
-                      : builder.explicitContentNullRead));
+                      ? lenientRead(annotations.get(parameters[i], JsonLenient.class), annotations)
+                      : builder.lenientRead()));
         }
       }
     }
@@ -1960,7 +1976,8 @@ final class ObjectCodecBuilder {
                 builder.formatAnnotation(),
                 builder.creatorUnboxedRequired,
                 builder.onNullRead(),
-                builder.explicitContentNullRead));
+                builder.explicitContentNullRead,
+                builder.lenientRead()));
       }
     }
     JsonCreatorFieldInfo[] fieldArray = fields.toArray(new JsonCreatorFieldInfo[0]);
@@ -3109,10 +3126,14 @@ final class ObjectCodecBuilder {
   private static final class Annotations {
     private final Class<?> targetType;
     private final JsonSharedRegistry registry;
+    // The class declaration replaces the builder default for every property of this class.
+    private final int lenientRead;
 
     private Annotations(Class<?> targetType, JsonSharedRegistry registry) {
       this.targetType = targetType;
       this.registry = registry;
+      JsonLenient lenient = registry.annotation(targetType, targetType, JsonLenient.class);
+      lenientRead = lenient == null ? registry.lenientRead() : LenientReadCodec.mask(lenient);
     }
 
     private <A extends Annotation> A get(AnnotatedElement element, Class<A> annotationType) {
@@ -3122,6 +3143,12 @@ final class ObjectCodecBuilder {
     private boolean has(AnnotatedElement element, Class<? extends Annotation> annotationType) {
       return get(element, annotationType) != null;
     }
+  }
+
+  private static int lenientRead(JsonLenient declared, Annotations annotations) {
+    return declared == null
+        ? annotations.lenientRead
+        : LenientReadCodec.mask(declared) | LenientReadCodec.DECLARED;
   }
 
   private static NullHandling effectiveNullHandling(NullHandling declared, NullHandling fallback) {
@@ -3159,6 +3186,8 @@ final class ObjectCodecBuilder {
     private Class<? extends JsonValueCodec<?>> valueCodecClass;
     private JsonFormat formatAnnotation;
     private AnnotatedElement formatSource;
+    private JsonLenient lenientAnnotation;
+    private AnnotatedElement lenientSource;
     private AnnotatedElement codecSource;
     private JsonUnwrapped unwrappedAnnotation;
     private AnnotatedElement unwrappedSource;
@@ -3237,6 +3266,7 @@ final class ObjectCodecBuilder {
       mergeIgnore(parameter);
       mergeFormat(parameter);
       mergeCodec(parameter);
+      mergeLenient(parameter);
       mergeUnwrapped(parameter);
       if (ignoreRead || field != null && !fieldReadAllowed) {
         return;
@@ -3312,6 +3342,7 @@ final class ObjectCodecBuilder {
           || rawValueSource != null
           || valueCodecClass != null
           || formatAnnotation != null
+          || lenientAnnotation != null
           || unwrappedAnnotation != null;
     }
 
@@ -3326,6 +3357,10 @@ final class ObjectCodecBuilder {
 
     private NullHandling onNullRead() {
       return effectiveNullHandling(explicitNullRead, annotations.registry.onNullRead());
+    }
+
+    private int lenientRead() {
+      return ObjectCodecBuilder.lenientRead(lenientAnnotation, annotations);
     }
 
     private boolean hasLogicalMember() {
@@ -3378,6 +3413,10 @@ final class ObjectCodecBuilder {
         GeneratedJsonCodec<?> generatedCodec,
         boolean escapeNonAscii) {
       validateTypes(ownerType);
+      if (lenientAnnotation != null && !hasReadSink() && creatorArgumentIndex < 0) {
+        throw new ForyJsonException(
+            "@JsonLenient requires a read-enabled property: " + name + " from " + lenientSource);
+      }
       if (explicitInclude != JsonProperty.Include.DEFAULT && !hasWriteSource()) {
         throw new ForyJsonException(
             "JSON inclusion policy requires a write source for property " + name);
@@ -3429,13 +3468,18 @@ final class ObjectCodecBuilder {
           rawValue,
           escapeNonAscii,
           onNullRead(),
-          explicitContentNullRead);
+          explicitContentNullRead,
+          lenientRead());
     }
 
     private void validateUnwrapped(Class<?> type, JsonCreatorInfo creatorInfo) {
       if (hasNullHandling()) {
         throw new ForyJsonException(
             "@JsonUnwrapped property has no null value or content position: " + name);
+      }
+      if (lenientAnnotation != null) {
+        throw new ForyJsonException(
+            "@JsonLenient is not supported on @JsonUnwrapped property " + name);
       }
       if (isAny()) {
         throw new ForyJsonException(
@@ -3523,6 +3567,7 @@ final class ObjectCodecBuilder {
       // the backing field. Merge every declaration into the same logical property.
       mergeFormat(source);
       mergeCodec(source);
+      mergeLenient(source);
       if (annotations.has(source, JsonRawValue.class)) {
         if (formatAnnotation != null) {
           throw formatConflict(source, "@JsonRawValue");
@@ -3628,6 +3673,7 @@ final class ObjectCodecBuilder {
       mergeIgnore(parameter);
       mergeFormat(parameter);
       mergeCodec(parameter);
+      mergeLenient(parameter);
       mergeUnwrapped(parameter);
       JsonProperty property = annotations.get(parameter, JsonProperty.class);
       if (unwrappedAnnotation == null) {
@@ -3679,6 +3725,27 @@ final class ObjectCodecBuilder {
         ignoreRead = true;
         readField = null;
         readSetter = null;
+      }
+    }
+
+    private void mergeLenient(AnnotatedElement source) {
+      JsonLenient declared = annotations.get(source, JsonLenient.class);
+      if (declared == null) {
+        return;
+      }
+      if (lenientAnnotation != null
+          && LenientReadCodec.mask(lenientAnnotation) != LenientReadCodec.mask(declared)) {
+        throw new ForyJsonException(
+            "Conflicting @JsonLenient declarations for property "
+                + name
+                + " from "
+                + lenientSource
+                + " and "
+                + source);
+      }
+      if (lenientAnnotation == null) {
+        lenientAnnotation = declared;
+        lenientSource = source;
       }
     }
 

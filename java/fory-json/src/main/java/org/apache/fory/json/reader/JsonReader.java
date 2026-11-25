@@ -109,6 +109,10 @@ public abstract class JsonReader {
     100_000_000_000_000_000L,
     1_000_000_000_000_000_000L
   };
+  private static final BigDecimal LONG_MIN_DECIMAL = BigDecimal.valueOf(Long.MIN_VALUE);
+  private static final BigDecimal LONG_MAX_DECIMAL = BigDecimal.valueOf(Long.MAX_VALUE);
+  private static final int LONG_MAX_DIGITS = 19;
+  private static final long TRUNCATION_EXPONENT_LIMIT = 2L * MAX_BIG_NUMBER_LENGTH;
   private static final int DOUBLE_FAST_MAX_SCALE = 15;
   private static final long DOUBLE_FAST_MAX_UNSCALED = 1L << 53;
   private static final int DOUBLE_FRACTION_BITS = 52;
@@ -1197,6 +1201,227 @@ public abstract class JsonReader {
       return;
     }
     throw error("Expected closing quote");
+  }
+
+  // Lenient property reads. These operations run only for properties whose metadata selected a
+  // lenient read codec, so strict readers never reach them. They use the representation-neutral
+  // cursor and leave native tokens to the concrete readers.
+
+  /**
+   * Consumes the next value when it is an empty JSON string, or a string containing only spaces
+   * when {@code blank} is true.
+   *
+   * @return whether such a string was consumed; otherwise only leading whitespace is consumed
+   */
+  @Internal
+  public final boolean tryReadEmptyString(boolean blank) {
+    skipWhitespace();
+    if (position >= length() || charAt(position) != '"') {
+      return false;
+    }
+    int cursor = position + 1;
+    if (blank) {
+      cursor = scanSpaces(cursor);
+    }
+    if (cursor < length() && charAt(cursor) == '"') {
+      position = cursor + 1;
+      return true;
+    }
+    return false;
+  }
+
+  /**
+   * Consumes the opening quote and leading whitespace of a string whose unescaped content is a
+   * non-blank value with leading or trailing spaces. The caller then reads the bare token and
+   * finishes with {@link #finishPaddedQuotedScalar()}.
+   *
+   * @return whether the opening quote was consumed; otherwise only leading whitespace is consumed
+   */
+  @Internal
+  public final boolean beginPaddedQuotedScalar() {
+    skipWhitespace();
+    if (position >= length() || charAt(position) != '"') {
+      return false;
+    }
+    int contentStart = position + 1;
+    int close = contentStart;
+    int inputLength = length();
+    while (close < inputLength) {
+      char ch = charAt(close);
+      if (ch == '"') {
+        break;
+      }
+      if (ch == '\\') {
+        return false;
+      }
+      close++;
+    }
+    if (close >= inputLength || close == contentStart) {
+      return false;
+    }
+    int tokenStart = scanSpaces(contentStart);
+    if (tokenStart == close
+        || tokenStart == contentStart && charAt(close - 1) != ' '
+        || isJsonWhitespace(charAt(tokenStart))) {
+      return false;
+    }
+    position = tokenStart;
+    return true;
+  }
+
+  /** Consumes trailing spaces and the closing quote after {@link #beginPaddedQuotedScalar()}. */
+  @Internal
+  public final void finishPaddedQuotedScalar() {
+    position = scanSpaces(position);
+    finishQuotedScalar();
+  }
+
+  /**
+   * Reads a native or quoted JSON number as a {@code long}, truncating a fraction or exponent
+   * toward zero. An integral token uses the strict integer parser; values outside {@code [min,
+   * max]} fail with the given overflow message at the token position.
+   */
+  @Internal
+  public final long readTruncatedLong(long min, long max, String overflow) {
+    skipWhitespace();
+    boolean quoted = position < length() && charAt(position) == '"';
+    if (quoted) {
+      beginQuotedScalar();
+    }
+    int start = position;
+    long value;
+    // Integral tokens keep the allocation-free integer parser; its own long overflow error is
+    // sufficient, so a whole number beyond the long range is not re-parsed for a target message.
+    long separators = scanNumberToken();
+    if (separators == -1L) {
+      position = start;
+      value = readLongToken();
+    } else {
+      BigDecimal decimal = truncatedDecimal(start, separators, LONG_MAX_DIGITS, overflow);
+      if (decimal.compareTo(LONG_MIN_DECIMAL) < 0 || decimal.compareTo(LONG_MAX_DECIMAL) > 0) {
+        throw errorAt(overflow, start);
+      }
+      value = decimal.longValue();
+    }
+    if (value < min || value > max) {
+      throw errorAt(overflow, start);
+    }
+    if (quoted) {
+      finishQuotedScalar();
+    }
+    return value;
+  }
+
+  /**
+   * Reads a native or quoted JSON number as a {@code BigInteger}, truncating a fraction or exponent
+   * toward zero. The integral part is limited to the arbitrary-precision number length.
+   */
+  @Internal
+  public final BigInteger readTruncatedBigInteger() {
+    skipWhitespace();
+    boolean quoted = position < length() && charAt(position) == '"';
+    if (quoted) {
+      beginQuotedScalar();
+    }
+    int start = position;
+    BigInteger value;
+    long separators = scanNumberToken();
+    if (separators == -1L) {
+      position = start;
+      value = readBigIntegerToken();
+    } else {
+      // An exponent must not expand a short token into a much longer integer: bound the integral
+      // digits by the token length, with the long range as the minimum allowance.
+      int maxDigits = Math.min(MAX_BIG_NUMBER_LENGTH, Math.max(position - start, LONG_MAX_DIGITS));
+      value =
+          truncatedDecimal(start, separators, maxDigits, "Integer part is too long").toBigInteger();
+    }
+    if (quoted) {
+      finishQuotedScalar();
+    }
+    return value;
+  }
+
+  // Truncates the scanned token ending at the current position toward zero without parsing it as a
+  // whole. The token's mantissa holds at most MAX_BIG_NUMBER_LENGTH digits, so the result's
+  // integral
+  // digit count is decided from the digit positions and the clamped exponent before any
+  // allocation, and only the digits that survive truncation are materialized.
+  private BigDecimal truncatedDecimal(
+      int start, long separators, int maxIntegerDigits, String overflow) {
+    if (position - start > MAX_BIG_NUMBER_LENGTH) {
+      throw errorAt("Number is too long", start);
+    }
+    int point = (int) (separators >> 32);
+    int exponentOffset = (int) separators;
+    boolean negative = charAt(start) == '-';
+    int integerStart = negative ? start + 1 : start;
+    int mantissaEnd = exponentOffset >= 0 ? exponentOffset : position;
+    int integerLength = (point >= 0 ? point : mantissaEnd) - integerStart;
+    int fractionStart = point >= 0 ? point + 1 : mantissaEnd;
+    int mantissaLength = integerLength + mantissaEnd - fractionStart;
+    int leadingZeros = 0;
+    while (leadingZeros < mantissaLength
+        && mantissaDigit(leadingZeros, integerStart, integerLength, fractionStart) == '0') {
+      leadingZeros++;
+    }
+    if (leadingZeros == mantissaLength) {
+      return BigDecimal.ZERO;
+    }
+    long exponent = exponentOffset >= 0 ? truncationExponent(exponentOffset + 1) : 0;
+    long resultDigits = integerLength + exponent - leadingZeros;
+    if (resultDigits <= 0) {
+      return BigDecimal.ZERO;
+    }
+    if (resultDigits > maxIntegerDigits) {
+      throw errorAt(overflow, start);
+    }
+    StringBuilder digits = new StringBuilder((int) resultDigits + 1);
+    if (negative) {
+      digits.append('-');
+    }
+    long end = leadingZeros + resultDigits;
+    for (int i = leadingZeros; i < end; i++) {
+      digits.append(
+          i < mantissaLength ? mantissaDigit(i, integerStart, integerLength, fractionStart) : '0');
+    }
+    return new BigDecimal(digits.toString());
+  }
+
+  private char mantissaDigit(int index, int integerStart, int integerLength, int fractionStart) {
+    return index < integerLength
+        ? charAt(integerStart + index)
+        : charAt(fractionStart + index - integerLength);
+  }
+
+  // Reads the already validated exponent digits. Magnitudes past twice the mantissa digit limit
+  // cannot change the outcome, so the value is clamped instead of overflowing.
+  private long truncationExponent(int offset) {
+    boolean negative = false;
+    char sign = charAt(offset);
+    if (sign == '-' || sign == '+') {
+      negative = sign == '-';
+      offset++;
+    }
+    long value = 0;
+    for (int i = offset; i < position && value <= TRUNCATION_EXPONENT_LIMIT; i++) {
+      value = value * 10 + charAt(i) - '0';
+    }
+    return negative ? -value : value;
+  }
+
+  // String content may contain raw spaces but no raw control characters, so lenient padding inside
+  // quotes is limited to spaces.
+  private int scanSpaces(int cursor) {
+    int inputLength = length();
+    while (cursor < inputLength && charAt(cursor) == ' ') {
+      cursor++;
+    }
+    return cursor;
+  }
+
+  private static boolean isJsonWhitespace(char ch) {
+    return ch == ' ' || ch == '\n' || ch == '\r' || ch == '\t';
   }
 
   protected final BigDecimal readBigDecimalExponentValue(

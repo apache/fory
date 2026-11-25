@@ -62,6 +62,7 @@ import org.apache.fory.json.codec.JsonSubTypesInfo;
 import org.apache.fory.json.codec.JsonUnwrappedInfo;
 import org.apache.fory.json.codec.JsonValueCodec;
 import org.apache.fory.json.codec.Latin1ReaderCodec;
+import org.apache.fory.json.codec.LenientReadCodec;
 import org.apache.fory.json.codec.MapCodec;
 import org.apache.fory.json.codec.MapKeyCodec;
 import org.apache.fory.json.codec.ObjectCodec;
@@ -503,6 +504,92 @@ public final class JsonTypeResolver {
     // through the same binding operation; already resolved copies preserve their selected children.
     resolveCodecTypes(configured, typeInfo.typeRef());
     return occurrence;
+  }
+
+  /**
+   * Resolves the read occurrence of a property with lenient features. Features apply only to
+   * Fory-owned representations; {@code typeInfo} is {@code null} for an unboxed value property, and
+   * {@code selected} is true when the property selects its own representation. The occurrence is
+   * returned unchanged when no feature fits, which is rejected for a feature set declared on the
+   * property itself.
+   */
+  @Internal
+  public JsonTypeInfo withLenientRead(
+      JsonTypeInfo typeInfo, int lenientRead, boolean selected, String property) {
+    int features = lenientRead & LenientReadCodec.FEATURES;
+    if (features == 0) {
+      return typeInfo;
+    }
+    boolean declared = (lenientRead & LenientReadCodec.DECLARED) != 0;
+    if (typeInfo == null || selected) {
+      if (declared) {
+        throw new ForyJsonException(
+            typeInfo == null
+                ? "@JsonLenient is not supported on unboxed value property " + property
+                : "@JsonLenient requires the default representation of JSON property " + property);
+      }
+      return typeInfo;
+    }
+    JsonTypeInfo lenient = lenientTypeInfo(typeInfo, features);
+    if (lenient == typeInfo && declared) {
+      throw new ForyJsonException(
+          "@JsonLenient has no feature applicable to JSON property "
+              + property
+              + " of type "
+              + typeInfo.type());
+    }
+    return lenient;
+  }
+
+  private JsonTypeInfo lenientTypeInfo(JsonTypeInfo typeInfo, int features) {
+    JsonValueCodec<?> codec = typeInfo.valueCodec();
+    // A registered or module factory codec owns its representation, including element semantics
+    // such as unsigned arrays. Object codecs are never registered directly and always use the
+    // Fory object model, so they remain eligible.
+    if ((typeInfo.factoryKey() != null || typeInfo.exactCodecClass() != null)
+        && !(codec instanceof ObjectCodec)) {
+      return typeInfo;
+    }
+    LenientReadCodec scalar = LenientReadCodec.scalar(typeInfo, features);
+    if (scalar != null) {
+      return newTypeInfo(typeInfo.typeRef(), JsonFieldKind.OBJECT, scalar, true);
+    }
+    JsonTypeInfo occurrence = typeInfo;
+    JsonTypeInfo element = null;
+    if (codec instanceof ArrayCodec || codec instanceof CollectionCodec) {
+      TypeRef<?> typeRef = typeInfo.typeRef();
+      Class<?> rawType = typeInfo.rawType();
+      TypeRef<?> elementType;
+      if (codec instanceof ArrayCodec) {
+        elementType = typeRef.getComponentType();
+        element = getTypeInfo(elementType);
+      } else {
+        elementType = CodecUtils.elementTypeRef(typeRef);
+        element = ((CollectionCodec<?>) codec).elementTypeInfo();
+      }
+      LenientReadCodec elementCodec = LenientReadCodec.scalar(element, features);
+      if (elementCodec != null) {
+        // Rebuild only this occurrence with lenient direct elements. The shared element and
+        // container bindings stay strict, and the occurrence keeps its content null handling.
+        element = newTypeInfo(elementType, JsonFieldKind.OBJECT, elementCodec, true);
+        NullHandling handling;
+        JsonValueCodec<?> rebuilt;
+        if (codec instanceof ArrayCodec) {
+          handling = ((ArrayCodec<?>) codec).onContentNullRead();
+          rebuilt = ArrayCodec.create(rawType, element, sharedRegistry.byteArrayFormat());
+        } else {
+          handling = ((CollectionCodec<?>) codec).onContentNullRead();
+          rebuilt = CollectionCodec.create(rawType, elementType.getRawType(), element, this);
+        }
+        occurrence = newTypeInfo(typeRef, rebuilt);
+        registerTypeInfoOwner(occurrence, rebuilt);
+        occurrence = withContentNullRead(occurrence, handling);
+      }
+    }
+    LenientReadCodec container = LenientReadCodec.container(occurrence, element, features);
+    return container == null
+        ? occurrence
+        : newTypeInfo(typeInfo.typeRef(), JsonFieldKind.OBJECT, container, true);
   }
 
   /** Generates hosted capabilities and returns their language-neutral object metadata owners. */

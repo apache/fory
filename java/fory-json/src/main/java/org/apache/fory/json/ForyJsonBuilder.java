@@ -20,11 +20,13 @@
 package org.apache.fory.json;
 
 import java.util.ArrayList;
+import java.util.EnumSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import org.apache.fory.json.annotation.JsonByteArray;
+import org.apache.fory.json.annotation.JsonLenient;
 import org.apache.fory.json.annotation.JsonMixin;
 import org.apache.fory.json.annotation.JsonProperty.Include;
 import org.apache.fory.json.annotation.JsonProperty.NullHandling;
@@ -59,6 +61,8 @@ public final class ForyJsonBuilder {
   private boolean escapeNonAscii;
   private boolean failOnMissingRequiredProperties;
   private boolean failOnDuplicateProperties;
+  private final EnumSet<JsonLenient.Feature> lenientRead =
+      EnumSet.noneOf(JsonLenient.Feature.class);
   private JsonByteArray.Format byteArrayFormat = JsonByteArray.Format.BASE64;
   private boolean codegenEnabled = true;
   private boolean asyncCompilationEnabled = true;
@@ -218,6 +222,27 @@ public final class ForyJsonBuilder {
    */
   public ForyJsonBuilder failOnDuplicateProperties(boolean enabled) {
     failOnDuplicateProperties = enabled;
+    return this;
+  }
+
+  /**
+   * Sets the lenient read features applied to every object property without its own or its class's
+   * {@link JsonLenient} declaration. No feature is enabled by default, so reading is strict.
+   *
+   * <p>Each call replaces the previous set. A feature applies only to properties whose type and
+   * Fory-owned representation it fits; see {@link JsonLenient} for the exact behavior. Root values,
+   * map values, and optional contents are not affected. Writing is unaffected.
+   *
+   * @throws NullPointerException if the array or one of its features is null
+   */
+  public ForyJsonBuilder lenientRead(JsonLenient.Feature... features) {
+    Objects.requireNonNull(features, "features");
+    EnumSet<JsonLenient.Feature> selected = EnumSet.noneOf(JsonLenient.Feature.class);
+    for (JsonLenient.Feature feature : features) {
+      selected.add(Objects.requireNonNull(feature, "feature"));
+    }
+    lenientRead.clear();
+    lenientRead.addAll(selected);
     return this;
   }
 
@@ -460,6 +485,7 @@ public final class ForyJsonBuilder {
         escapeNonAscii,
         failOnMissingRequiredProperties,
         failOnDuplicateProperties,
+        lenientRead,
         byteArrayFormat,
         effectiveCodegen,
         effectiveAsyncCompilation,
