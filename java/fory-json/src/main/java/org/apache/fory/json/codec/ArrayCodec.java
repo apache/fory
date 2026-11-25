@@ -227,6 +227,22 @@ public abstract class ArrayCodec<T> implements ContainerJsonCodec<T> {
     }
   }
 
+  /**
+   * Removes nulls decoded by a reference element codec after SKIP already dropped explicit JSON
+   * nulls. Compacting after the loop keeps each batch reservation ahead of the batch's final
+   * element read; the reservation still covers every decoded element.
+   */
+  static int removeDecodedNulls(Object[] values, int size) {
+    int kept = 0;
+    for (int i = 0; i < size; i++) {
+      Object value = values[i];
+      if (value != null) {
+        values[kept++] = value;
+      }
+    }
+    return kept;
+  }
+
   static void finishReferenceArray(JsonReader reader, int size) {
     int tailSize = size & ARRAY_BATCH_MASK;
     reader.reserveGraphMemory(ARRAY_HEADER_BYTES + tailSize * REFERENCE_BYTES);
@@ -2716,6 +2732,9 @@ public abstract class ArrayCodec<T> implements ContainerJsonCodec<T> {
         } while (reader.consumeNextCommaOrEndArray());
       }
       reader.reserveGraphMemory(ARRAY_HEADER_BYTES + (size & ARRAY_BATCH_MASK) * REFERENCE_BYTES);
+      if (onContentNullRead == NullHandling.SKIP) {
+        size = removeDecodedNulls(values, size);
+      }
       T array = (T) (size == values.length ? values : Arrays.copyOf(values, size));
       reader.exitDepth();
       return array;
@@ -2748,6 +2767,9 @@ public abstract class ArrayCodec<T> implements ContainerJsonCodec<T> {
         } while (reader.consumeNextCommaOrEndArray());
       }
       reader.reserveGraphMemory(ARRAY_HEADER_BYTES + (size & ARRAY_BATCH_MASK) * REFERENCE_BYTES);
+      if (onContentNullRead == NullHandling.SKIP) {
+        size = removeDecodedNulls(values, size);
+      }
       T array = (T) (size == values.length ? values : Arrays.copyOf(values, size));
       reader.exitDepth();
       return array;
@@ -2780,6 +2802,9 @@ public abstract class ArrayCodec<T> implements ContainerJsonCodec<T> {
         } while (reader.consumeNextCommaOrEndArray());
       }
       reader.reserveGraphMemory(ARRAY_HEADER_BYTES + (size & ARRAY_BATCH_MASK) * REFERENCE_BYTES);
+      if (onContentNullRead == NullHandling.SKIP) {
+        size = removeDecodedNulls(values, size);
+      }
       T array = (T) (size == values.length ? values : Arrays.copyOf(values, size));
       reader.exitDepth();
       return array;
