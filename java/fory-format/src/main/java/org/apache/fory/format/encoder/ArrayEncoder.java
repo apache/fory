@@ -22,7 +22,10 @@ package org.apache.fory.format.encoder;
 import org.apache.fory.format.row.binary.BinaryArray;
 import org.apache.fory.format.type.Field;
 
-/** Encoder to encode/decode object in the list container by toArray/fromArray row. */
+/**
+ * Encoder to encode/decode object in the list container by toArray/fromArray row. An ArrayEncoder
+ * instance is reusable but not thread-safe.
+ */
 public interface ArrayEncoder<T> extends Encoder<T> {
   Field field();
 
