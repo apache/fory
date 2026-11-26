@@ -32,6 +32,7 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.math.BigDecimal;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.nio.charset.StandardCharsets;
@@ -44,6 +45,7 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import javax.tools.Diagnostic;
 import javax.tools.DiagnosticCollector;
 import javax.tools.JavaCompiler;
@@ -116,6 +118,71 @@ public class JsonTypeProcessorTest {
     assertTrue(rules.contains("test.Person create(java.lang.String);"), rules);
     assertTrue(rules.contains("java.lang.String city;"), rules);
     assertTrue(rules.contains("class test." + base + "_ForyJsonCodec {"), rules);
+  }
+
+  @Test
+  public void defaultCodecOnInterfaceFailsCompilation() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.DefaultContract",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
+                + "@JsonDefaultCodec(type = Long.class, codec = DefaultContract.LongCodec.class)\n"
+                + "public interface DefaultContract {\n"
+                + "  final class LongCodec extends org.apache.fory.json.codec.AbstractJsonValueCodec<Long> {\n"
+                + "    public void write(org.apache.fory.json.writer.JsonWriter writer, Long value) {}\n"
+                + "    public Long read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+                + "  }\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result.diagnostics().contains("@JsonDefaultCodec is read from classes only"),
+        result.diagnostics());
+  }
+
+  @Test
+  public void defaultCodecOnEnumFailsCompilation() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.DefaultStatus",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
+                + "@JsonDefaultCodec(type = Long.class, codec = DefaultStatus.LongCodec.class)\n"
+                + "public enum DefaultStatus {\n"
+                + "  ACTIVE;\n"
+                + "  public static final class LongCodec\n"
+                + "      extends org.apache.fory.json.codec.AbstractJsonValueCodec<Long> {\n"
+                + "    public void write(org.apache.fory.json.writer.JsonWriter writer, Long value) {}\n"
+                + "    public Long read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+                + "  }\n"
+                + "}\n");
+    assertFalse(result.success);
+    assertTrue(
+        result.diagnostics().contains("@JsonDefaultCodec is read from classes only"),
+        result.diagnostics());
+  }
+
+  @Test
+  public void mixinDefaultCodecRules() throws Exception {
+    CompilationResult result =
+        compile(
+            "test.DefaultTarget",
+            "package test;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "public final class DefaultTarget {\n"
+                + "  public Long id;\n"
+                + "}\n"
+                + "@JsonMixin(target = DefaultTarget.class)\n"
+                + "@JsonDefaultCodec(type = Long.class, codec = DefaultMixin.LongCodec.class)\n"
+                + "interface DefaultMixin {\n"
+                + "  final class LongCodec extends org.apache.fory.json.codec.AbstractJsonValueCodec<Long> {\n"
+                + "    public void write(org.apache.fory.json.writer.JsonWriter writer, Long value) {}\n"
+                + "    public Long read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(MIXIN_RULE_PREFIX + "test.DefaultMixin.pro");
+    assertTrue(rules.contains("class test.DefaultMixin$LongCodec { public <init>(); }"), rules);
   }
 
   @Test
@@ -1615,6 +1682,101 @@ public class JsonTypeProcessorTest {
     assertTrue(rules.contains("void putExtra(java.lang.String,java.lang.Object);"), rules);
     assertTrue(rules.contains("class java.util.ArrayList { public <init>(); }"), rules);
     assertTrue(rules.contains("class java.util.HashMap { public <init>(); }"), rules);
+  }
+
+  @Test
+  public void defaultCodecRecordPipeline() throws Exception {
+    assumeJava16Source();
+    CompilationResult result =
+        compile(
+            "test.DefaultCodecRecord",
+            "package test;\n"
+                + "import java.math.BigDecimal;\n"
+                + "import java.util.Optional;\n"
+                + "import org.apache.fory.json.annotation.*;\n"
+                + "@JsonType\n"
+                + "@JsonDefaultCodec(type = BigDecimal.class, codec = DefaultCodecRecord.Plain.class)\n"
+                + "public record DefaultCodecRecord(BigDecimal price, Optional<BigDecimal> bid) {\n"
+                + "  public DefaultCodecRecord {\n"
+                + "    bid = bid == null ? Optional.empty() : bid;\n"
+                + "  }\n"
+                + "  public static final class Plain\n"
+                + "      extends org.apache.fory.json.codec.AbstractJsonValueCodec<BigDecimal> {\n"
+                + "    public void write(org.apache.fory.json.writer.JsonWriter w, BigDecimal v) {\n"
+                + "      w.writeString(\"p:\" + v.toPlainString());\n"
+                + "    }\n"
+                + "    public BigDecimal read(org.apache.fory.json.reader.JsonReader r) {\n"
+                + "      return new BigDecimal(r.readString().substring(2));\n"
+                + "    }\n"
+                + "  }\n"
+                + "}\n");
+    assertTrue(result.success, result.diagnostics());
+    ClassLoader loader = result.classLoader();
+    Class<?> type = loader.loadClass("test.DefaultCodecRecord");
+    BigDecimal ten = new BigDecimal("1E+1");
+    Object value =
+        type.getConstructor(BigDecimal.class, Optional.class).newInstance(ten, Optional.of(ten));
+    for (ForyJson json : jsonRuntimes(loader)) {
+      String text = json.toJson(value);
+      assertEquals(text, "{\"price\":\"p:10\",\"bid\":\"p:10\"}");
+      Object decoded = json.fromJson(text, type);
+      assertEquals(type.getMethod("price").invoke(decoded), new BigDecimal("10"));
+      assertEquals(type.getMethod("bid").invoke(decoded), Optional.of(new BigDecimal("10")));
+    }
+  }
+
+  @Test
+  public void defaultCodecRules() throws Exception {
+    String codec =
+        "  public static final class %s extends org.apache.fory.json.codec.AbstractJsonValueCodec<%s> {\n"
+            + "    public void write(org.apache.fory.json.writer.JsonWriter writer, %s value) {}\n"
+            + "    public %s read(org.apache.fory.json.reader.JsonReader reader) { return null; }\n"
+            + "  }\n";
+    Map<String, String> sources = new LinkedHashMap<>();
+    sources.put(
+        "test.DefaultCodecBase",
+        "package test;\n"
+            + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
+            + "@JsonDefaultCodec(type = Long.class, codec = DefaultCodecBase.BaseCodec.class)\n"
+            + "public class DefaultCodecBase {\n"
+            + String.format(codec, "BaseCodec", "Long", "Long", "Long")
+            + "  public Long id;\n"
+            + "}\n");
+    sources.put(
+        "test.DefaultCodecModel",
+        "package test;\n"
+            + "import java.math.BigDecimal;\n"
+            + "import java.util.Optional;\n"
+            + "import org.apache.fory.json.annotation.JsonDefaultCodec;\n"
+            + "import org.apache.fory.json.annotation.JsonType;\n"
+            + "@JsonType\n"
+            + "@JsonDefaultCodec(type = BigDecimal.class, codec = DefaultCodecModel.DecimalCodec.class)\n"
+            + "@JsonDefaultCodec(type = Optional.class, codec = DefaultCodecModel.OptionalCodec.class)\n"
+            + "public class DefaultCodecModel extends DefaultCodecBase {\n"
+            + String.format(codec, "DecimalCodec", "BigDecimal", "BigDecimal", "BigDecimal")
+            + String.format(
+                codec,
+                "OptionalCodec",
+                "Optional<BigDecimal>",
+                "Optional<BigDecimal>",
+                "Optional<BigDecimal>")
+            + "  public BigDecimal price;\n"
+            + "  public Optional<BigDecimal> bid = Optional.empty();\n"
+            + "}\n");
+    CompilationResult result = compile(sources);
+    assertTrue(result.success, result.diagnostics());
+    String rules = result.generatedResource(RULE_PREFIX + "test.DefaultCodecModel.pro");
+    assertTrue(
+        rules.contains("class test.DefaultCodecModel$DecimalCodec { public <init>(); }"), rules);
+    assertTrue(
+        rules.contains("class test.DefaultCodecModel$OptionalCodec { public <init>(); }"), rules);
+    assertTrue(rules.contains("class test.DefaultCodecBase$BaseCodec { public <init>(); }"), rules);
+    // The model itself uses only the repeated form, compiled into the nested container.
+    String keep = "-keep,allowoptimization,allowobfuscation @interface ";
+    assertTrue(rules.contains(keep + "org.apache.fory.json.annotation.JsonDefaultCodec\n"), rules);
+    assertTrue(
+        rules.contains(keep + "org.apache.fory.json.annotation.JsonDefaultCodec$List\n"), rules);
+    assertFalse(rules.contains("JsonDefaultCodec.List"), rules);
   }
 
   @Test

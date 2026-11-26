@@ -37,6 +37,11 @@ import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 import org.apache.fory.json.ForyJsonException
 import org.apache.fory.json.annotation.JsonByteArray
+import org.apache.fory.json.annotation.JsonCreator
+import org.apache.fory.json.annotation.JsonDefaultCodec
+import org.apache.fory.json.annotation.JsonIgnore
+import org.apache.fory.json.annotation.JsonProperty
+import org.apache.fory.json.codec.AbstractJsonValueCodec
 import org.apache.fory.json.codec.DirectUnboxedValueCodec
 import org.apache.fory.json.reader.JsonReader
 import org.apache.fory.json.writer.JsonWriter
@@ -87,6 +92,145 @@ class KotlinBuiltInCodecsTest {
   )
 
   private val fory = ForyJsonKotlin.builder().withAsyncCompilation(false).build()
+
+  class TaggedIntCodec : AbstractJsonValueCodec<Int>() {
+    override fun write(writer: JsonWriter, value: Int) {
+      writer.writeString("i:$value")
+    }
+
+    override fun read(reader: JsonReader): Int = reader.readString().substring(2).toInt()
+  }
+
+  @JsonDefaultCodec(type = Int::class, codec = TaggedIntCodec::class)
+  data class SignedAndUnsigned(
+    val signed: Int,
+    val unsigned: UInt,
+    val signedList: List<Int>,
+    val unsignedList: List<UInt>,
+  )
+
+  @JvmInline value class Price(val amount: Long)
+
+  class TaggedPriceCodec : AbstractJsonValueCodec<Price>() {
+    override fun write(writer: JsonWriter, value: Price) {
+      writer.writeString("p:${value.amount}")
+    }
+
+    override fun read(reader: JsonReader): Price = Price(reader.readString().substring(2).toLong())
+  }
+
+  @JsonDefaultCodec(type = Price::class, codec = TaggedPriceCodec::class)
+  data class Priced(val price: Price)
+
+  @JsonDefaultCodec(type = Price::class, codec = TaggedPriceCodec::class)
+  data class BoxedPrices(val price: Price?, val prices: List<Price>)
+
+  @Test
+  fun defaultCodecOnValueClassCarrierFails() {
+    val error = assertFailsWith<ForyJsonException> { fory.toJson(Priced(Price(10))) }
+    assertTrue(error.message.orEmpty().contains("@JsonDefaultCodec"), error.message)
+    val value = BoxedPrices(Price(10), listOf(Price(20)))
+    val json = fory.toJson(value)
+    assertEquals("{\"price\":\"p:10\",\"prices\":[\"p:20\"]}", json)
+    assertEquals(value, fory.fromJson(json, BoxedPrices::class.java))
+  }
+
+  class UIntTagCodec : AbstractJsonValueCodec<UInt>() {
+    override fun write(writer: JsonWriter, value: UInt) {
+      writer.writeString("u:$value")
+    }
+
+    override fun read(reader: JsonReader): UInt = reader.readString().substring(2).toUInt()
+  }
+
+  @JsonDefaultCodec(type = UInt::class, codec = UIntTagCodec::class)
+  data class UnsignedTarget(val value: UInt)
+
+  @Test
+  fun defaultCodecRejectsUnsignedTarget() {
+    val error = assertFailsWith<ForyJsonException> { fory.toJson(UnsignedTarget(1u)) }
+    assertTrue(error.message.orEmpty().contains("Invalid @JsonDefaultCodec"), error.message)
+  }
+
+  open class OpenShape(val name: String) {
+    override fun equals(other: Any?): Boolean = other is OpenShape && name == other.name
+
+    override fun hashCode(): Int = name.hashCode()
+  }
+
+  class OpenShapeCodec : AbstractJsonValueCodec<OpenShape>() {
+    override fun write(writer: JsonWriter, value: OpenShape) {
+      writer.writeString("s:${value.name}")
+    }
+
+    override fun read(reader: JsonReader): OpenShape = OpenShape(reader.readString().substring(2))
+  }
+
+  @JsonDefaultCodec(type = OpenShape::class, codec = OpenShapeCodec::class)
+  class ListedCreator
+  private constructor(
+    val shapes: List<OpenShape>,
+    val byKey: Map<String, OpenShape>,
+    @get:JsonIgnore val selected: Boolean,
+  ) {
+    @JsonCreator(value = ["shapes", "byKey"])
+    constructor(
+      sourceShapes: List<OpenShape>,
+      sourceByKey: Map<String, OpenShape>,
+    ) : this(sourceShapes, sourceByKey, true)
+  }
+
+  @JsonDefaultCodec(type = OpenShape::class, codec = OpenShapeCodec::class)
+  class LocalCreator
+  @JsonCreator
+  constructor(
+    @JsonProperty("shapes") val shapes: List<OpenShape>,
+    @JsonProperty("byKey") val byKey: Map<String, OpenShape>,
+  )
+
+  @Test
+  fun creatorReadsOpenElementsWithTheWrittenDefault() {
+    for (codegen in listOf(false, true)) {
+      val json = ForyJsonKotlin.builder().withCodegen(codegen).withAsyncCompilation(false).build()
+      val text = "{\"shapes\":[\"s:a\"],\"byKey\":{\"k\":\"s:b\"}}"
+      val listed = json.fromJson(text, ListedCreator::class.java)
+      assertEquals(listOf(OpenShape("a")), listed.shapes)
+      assertEquals(mapOf("k" to OpenShape("b")), listed.byKey)
+      assertEquals(text, json.toJson(listed))
+      val local = json.fromJson(text, LocalCreator::class.java)
+      assertEquals(listOf(OpenShape("a")), local.shapes)
+      assertEquals(mapOf("k" to OpenShape("b")), local.byKey)
+      assertEquals(text, json.toJson(local))
+    }
+  }
+
+  @JsonDefaultCodec(type = Int::class, codec = TaggedIntCodec::class)
+  class UnsignedCreator
+  private constructor(val signed: Int, val unsigned: UInt, @get:JsonIgnore val selected: Boolean) {
+    @JsonCreator(value = ["signed", "unsigned"])
+    constructor(sourceSigned: Int, sourceUnsigned: UInt) : this(sourceSigned, sourceUnsigned, true)
+  }
+
+  @Test
+  fun explicitCreatorKeepsUnsignedMapping() {
+    val text = "{\"signed\":\"i:5\",\"unsigned\":4294967295}"
+    val value = fory.fromJson(text, UnsignedCreator::class.java)
+    assertEquals(5, value.signed)
+    assertEquals(UInt.MAX_VALUE, value.unsigned)
+    assertEquals(text, fory.toJson(value))
+  }
+
+  @Test
+  fun defaultCodecKeepsUnsignedMapping() {
+    val value = SignedAndUnsigned(5, UInt.MAX_VALUE, listOf(1), listOf(UInt.MAX_VALUE))
+    val json = fory.toJson(value)
+    assertEquals(
+      "{\"signed\":\"i:5\",\"unsigned\":4294967295,\"signedList\":[\"i:1\"]," +
+        "\"unsignedList\":[4294967295]}",
+      json,
+    )
+    assertEquals(value, fory.fromJson(json, SignedAndUnsigned::class.java))
+  }
 
   data class BinaryFields(
     val label: String,

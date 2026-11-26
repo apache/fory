@@ -1270,6 +1270,44 @@ public final class JsonSharedRegistry {
         : overlay.annotation(declaration, annotationType);
   }
 
+  /**
+   * Returns whether a representation other than the standard container mapping owns this container
+   * type, in {@link #resolveCodec} order. Only an installed module factory is asked by building its
+   * codec, which may resolve children; the standard mapping itself is never built here.
+   */
+  boolean ownsContainer(TypeRef<?> typeRef, JsonTypeResolver localResolver) {
+    Class<?> rawType = typeRef.getRawType();
+    if (hasRegisteredCodec(rawType)
+        || codecDeclaration(rawType) != null
+        || valueDeclaration(rawType) != null
+        || hasSubTypes(rawType)
+        || exactCodecs.get(rawType) != null) {
+      return true;
+    }
+    if (typeRef.getTypeExtMeta() != null && typeRef.getTypeExtMeta().typeId() != Types.UNKNOWN) {
+      return true;
+    }
+    if (!Collection.class.isAssignableFrom(rawType) && !Map.class.isAssignableFrom(rawType)) {
+      return false;
+    }
+    return codecFactories.length != 0 && createModuleCodec(typeRef, localResolver, false) != null
+        || inferredSubTypes(rawType);
+  }
+
+  /** Returns whether the target's Mixin removes this annotation from the declaration. */
+  boolean mixinRemoves(
+      Class<?> targetType, AnnotatedElement declaration, Class<? extends Annotation> type) {
+    JsonMixinAnnotations.TargetOverlay overlay = mixinAnnotations.overlay(targetType);
+    return overlay != null && overlay.removed(declaration, type);
+  }
+
+  /** Returns whether the target's Mixin supplies or removes this annotation on the declaration. */
+  boolean mixinOverrides(
+      Class<?> targetType, AnnotatedElement declaration, Class<? extends Annotation> type) {
+    JsonMixinAnnotations.TargetOverlay overlay = mixinAnnotations.overlay(targetType);
+    return overlay != null && overlay.overrides(declaration, type);
+  }
+
   Class<?> mixinType(Class<?> targetType) {
     JsonMixinAnnotations.TargetOverlay overlay = mixinAnnotations.overlay(targetType);
     return overlay == null ? null : overlay.mixinType();

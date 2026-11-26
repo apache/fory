@@ -74,6 +74,7 @@ import org.apache.fory.json.meta.JsonFieldAccessor;
 import org.apache.fory.json.meta.JsonFieldInfo;
 import org.apache.fory.json.meta.JsonFieldNameHash;
 import org.apache.fory.json.meta.JsonValidatorInfo;
+import org.apache.fory.json.resolver.JsonDefaultCodecs;
 import org.apache.fory.json.resolver.JsonSharedRegistry;
 import org.apache.fory.platform.GraalvmSupport;
 import org.apache.fory.reflect.ObjectInstantiator;
@@ -1561,6 +1562,7 @@ final class ObjectCodecBuilder {
               resolved,
               rawTypes[i],
               builder.codecAnnotation(),
+              builder.creatorDefault(resolved, ownerType),
               builder.valueCodecClass(),
               builder.formatAnnotation(),
               builder.creatorUnboxedRequired,
@@ -1702,6 +1704,7 @@ final class ObjectCodecBuilder {
                   resolved,
                   rawTypes[i],
                   codecAnnotation,
+                  builder.creatorDefault(resolved, ownerType),
                   valueCodecClass,
                   builder.formatAnnotation(),
                   builder.creatorUnboxedRequired,
@@ -1775,6 +1778,12 @@ final class ObjectCodecBuilder {
             builder == null
                 ? annotations.get(parameters[i], JsonUnwrapped.class)
                 : builder.unwrappedAnnotation;
+        JsonDefaultCodecs.Selection defaultCodec =
+            builder != null
+                ? builder.creatorDefault(resolved, ownerType)
+                : codecAnnotation == null && formatAnnotation == null && unwrapped == null
+                    ? annotations.defaultCodecs.select(resolved)
+                    : null;
         if (unwrapped != null) {
           if (builder == null
               && (property.onNullRead() != NullHandling.DEFAULT
@@ -1810,6 +1819,7 @@ final class ObjectCodecBuilder {
                   resolved,
                   rawTypes[i],
                   codecAnnotation,
+                  defaultCodec,
                   valueCodecClass,
                   formatAnnotation,
                   false,
@@ -1956,6 +1966,7 @@ final class ObjectCodecBuilder {
                 resolved,
                 rawTypes[i],
                 builder.codecAnnotation(),
+                builder.creatorDefault(resolved, ownerType),
                 builder.valueCodecClass(),
                 builder.formatAnnotation(),
                 builder.creatorUnboxedRequired,
@@ -3109,10 +3120,12 @@ final class ObjectCodecBuilder {
   private static final class Annotations {
     private final Class<?> targetType;
     private final JsonSharedRegistry registry;
+    private final JsonDefaultCodecs defaultCodecs;
 
     private Annotations(Class<?> targetType, JsonSharedRegistry registry) {
       this.targetType = targetType;
       this.registry = registry;
+      defaultCodecs = JsonDefaultCodecs.of(targetType, registry);
     }
 
     private <A extends Annotation> A get(AnnotatedElement element, Class<A> annotationType) {
@@ -3424,6 +3437,7 @@ final class ObjectCodecBuilder {
           ownerType,
           objectModelType,
           codecAnnotation,
+          usesDefaultCodec() ? annotations.defaultCodecs.select(logicalTypeRef(ownerType)) : null,
           valueCodecClass,
           formatAnnotation,
           rawValue,
@@ -3508,6 +3522,30 @@ final class ObjectCodecBuilder {
 
     private JsonCodec codecAnnotation() {
       return codecAnnotation;
+    }
+
+    /**
+     * Returns the class default for a creator parameter, or null when the property declares its own
+     * representation. A property that also has a field or accessor selects from that logical type,
+     * so reading and writing use the same default.
+     */
+    private JsonDefaultCodecs.Selection creatorDefault(
+        TypeRef<?> parameterType, TypeRef<?> ownerType) {
+      if (!usesDefaultCodec()) {
+        return null;
+      }
+      return annotations.defaultCodecs.select(
+          hasLogicalMember() ? logicalTypeRef(ownerType) : parameterType);
+    }
+
+    private boolean usesDefaultCodec() {
+      return !annotations.defaultCodecs.isEmpty()
+          && codecAnnotation == null
+          && valueCodecClass == null
+          && formatAnnotation == null
+          && rawValueSource == null
+          && unwrappedAnnotation == null
+          && !isAny();
     }
 
     private Class<? extends JsonValueCodec<?>> valueCodecClass() {

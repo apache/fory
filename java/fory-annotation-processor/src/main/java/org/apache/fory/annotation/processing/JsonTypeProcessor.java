@@ -64,6 +64,8 @@ final class JsonTypeProcessor {
   private static final String JSON_MIXIN = JSON_PACKAGE + ".annotation.JsonMixin";
   private static final String JSON_MIXIN_REMOVE = JSON_PACKAGE + ".annotation.JsonMixinRemove";
   private static final String JSON_CODEC = JSON_PACKAGE + ".annotation.JsonCodec";
+  private static final String JSON_DEFAULT_CODEC = JSON_PACKAGE + ".annotation.JsonDefaultCodec";
+  private static final String JSON_DEFAULT_CODEC_LIST = JSON_DEFAULT_CODEC + ".List";
   private static final String JSON_SUB_TYPES = JSON_PACKAGE + ".annotation.JsonSubTypes";
   private static final String JSON_SUBTYPE_GENERATION =
       JSON_PACKAGE + ".codec.GeneratedJsonSubtypeTable.Generation";
@@ -104,6 +106,7 @@ final class JsonTypeProcessor {
 
   void process(RoundEnvironment roundEnvironment) {
     validateMixinControls(roundEnvironment);
+    validateDefaultCodecOwners(roundEnvironment);
     collectSubtypeGenerations(roundEnvironment);
     TypeElement jsonType = elements.getTypeElement(JSON_TYPE);
     TypeElement jsonSubTypes = elements.getTypeElement(JSON_SUB_TYPES);
@@ -221,6 +224,30 @@ final class JsonTypeProcessor {
             Diagnostic.Kind.ERROR,
             "@JsonMixinRemove is valid only inside a direct @JsonMixin source",
             element);
+      }
+    }
+  }
+
+  /** The runtime reads JsonDefaultCodec from classes only; a Mixin source may still supply it. */
+  private void validateDefaultCodecOwners(RoundEnvironment roundEnvironment) {
+    for (String name : new String[] {JSON_DEFAULT_CODEC, JSON_DEFAULT_CODEC_LIST}) {
+      TypeElement annotationType = elements.getTypeElement(name);
+      if (annotationType == null) {
+        continue;
+      }
+      for (Element element : roundEnvironment.getElementsAnnotatedWith(annotationType)) {
+        ElementKind kind = element.getKind();
+        boolean notClass =
+            kind == ElementKind.INTERFACE
+                || kind == ElementKind.ENUM
+                || kind == ElementKind.ANNOTATION_TYPE;
+        if (notClass && !hasAnnotation(element, JSON_MIXIN)) {
+          messager.printMessage(
+              Diagnostic.Kind.ERROR,
+              "@JsonDefaultCodec is read from classes only, not from interfaces, enums, or"
+                  + " annotation types",
+              element);
+        }
       }
     }
   }
@@ -476,6 +503,14 @@ final class JsonTypeProcessor {
     for (TypeElement type : classes) {
       collectAnnotations(annotations, type, model.annotationTypes);
       collectCodecAnnotation(annotationMirror(annotations, type, JSON_CODEC), model);
+      collectDefaultCodecs(annotationMirror(annotations, type, JSON_DEFAULT_CODEC), model);
+      AnnotationMirror defaultCodecList =
+          annotationMirror(annotations, type, JSON_DEFAULT_CODEC_LIST);
+      if (defaultCodecList != null) {
+        for (AnnotationMirror defaultCodec : annotationMirrors(defaultCodecList)) {
+          collectDefaultCodecs(defaultCodec, model);
+        }
+      }
       if (hasJsonAnnotations(annotations, type)) {
         model.annotationOwnerTypes.add(elements.getBinaryName(type).toString());
       }
@@ -602,6 +637,39 @@ final class JsonTypeProcessor {
     }
   }
 
+  /** Retains the codec classes a class-level {@code JsonDefaultCodec} may select at runtime. */
+  private void collectDefaultCodecs(AnnotationMirror annotation, Model model) {
+    if (annotation == null) {
+      return;
+    }
+    AnnotationValue value = annotationValue(annotation, "codec");
+    Object codecType = value == null ? null : value.getValue();
+    TypeElement codec =
+        codecType instanceof TypeMirror ? asTypeElement((TypeMirror) codecType) : null;
+    if (codec != null) {
+      model.codecTypes.add(elements.getBinaryName(codec).toString());
+    }
+  }
+
+  private static List<AnnotationMirror> annotationMirrors(AnnotationMirror container) {
+    List<AnnotationMirror> mirrors = new ArrayList<>();
+    for (Map.Entry<? extends ExecutableElement, ? extends AnnotationValue> member :
+        container.getElementValues().entrySet()) {
+      if (!member.getKey().getSimpleName().contentEquals("value")
+          || !(member.getValue().getValue() instanceof List<?>)) {
+        continue;
+      }
+      for (Object entry : (List<?>) member.getValue().getValue()) {
+        Object mirror =
+            entry instanceof AnnotationValue ? ((AnnotationValue) entry).getValue() : null;
+        if (mirror instanceof AnnotationMirror) {
+          mirrors.add((AnnotationMirror) mirror);
+        }
+      }
+    }
+    return mirrors;
+  }
+
   private void emitR8(Model model) {
     String resourceName =
         (model.mixin == null ? R8_PREFIX : R8_MIXIN_PREFIX) + model.resourceIdentity + ".pro";
@@ -671,9 +739,14 @@ final class JsonTypeProcessor {
       }
     }
     for (String annotationType : model.annotationTypes) {
+      // Keep rules name nested annotation types by binary name, such as JsonDefaultCodec$List.
+      TypeElement annotationElement = elements.getTypeElement(annotationType);
       builder
           .append("-keep,allowoptimization,allowobfuscation @interface ")
-          .append(annotationType)
+          .append(
+              annotationElement == null
+                  ? annotationType
+                  : elements.getBinaryName(annotationElement).toString())
           .append("\n");
     }
     for (String container : model.containerTypes) {

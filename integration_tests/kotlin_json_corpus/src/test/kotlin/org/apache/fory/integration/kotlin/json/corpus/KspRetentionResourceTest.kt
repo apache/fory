@@ -101,6 +101,32 @@ public class KspRetentionResourceTest {
       rules("PlatformDirectOverride"),
       "$PACKAGE.PlatformDirectOverrideCodec",
     )
+    val defaultCodecs = rules("PlatformDefaultCodecs")
+    assertConstructor(defaultCodecs, "$PACKAGE.PlatformDefaultTokenCodec")
+    assertTrue(
+      defaultCodecs.contains("@interface org.apache.fory.json.annotation.JsonDefaultCodec\n"),
+      defaultCodecs,
+    )
+    assertTrue(
+      defaultCodecs.contains("@interface org.apache.fory.json.annotation.JsonDefaultCodec\$List"),
+      defaultCodecs,
+    )
+    for (model in listOf("PlatformInheritedDefaults", "PlatformContainerDefaults")) {
+      val text = rules(model)
+      assertConstructor(text, "$PACKAGE.PlatformDefaultTokenCodec")
+      assertTrue(
+        text.contains("@interface org.apache.fory.json.annotation.JsonDefaultCodec\$List"),
+        text,
+      )
+      assertFalse(text.contains("JsonDefaultCodec.List"), text)
+    }
+    assertTrue(
+      rules("PlatformInheritedDefaults").contains("class $PACKAGE.PlatformDefaultBase"),
+      rules("PlatformInheritedDefaults"),
+    )
+    val mixinDefaults = mixinRules("PlatformMixinDefaults")
+    assertConstructor(mixinDefaults, "$PACKAGE.PlatformDefaultTokenCodec")
+    assertConstructor(mixinDefaults, "$PACKAGE.PlatformLabelCodec")
     val mixin = mixinRules("PlatformJavaProfileMixin")
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfile"), mixin)
     assertTrue(mixin.contains("class $PACKAGE.PlatformJavaProfileMixin"), mixin)
@@ -148,10 +174,13 @@ public class KspRetentionResourceTest {
         "META-INF/proguard/fory-json-$PACKAGE.PlatformAccount.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformBox.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformCircle.pro",
+        "META-INF/proguard/fory-json-$PACKAGE.PlatformContainerDefaults.pro",
+        "META-INF/proguard/fory-json-$PACKAGE.PlatformDefaultCodecs.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDefaults.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformNullHandling.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformDirectOverride.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformId.pro",
+        "META-INF/proguard/fory-json-$PACKAGE.PlatformInheritedDefaults.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformMarker.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformOpen.pro",
         "META-INF/proguard/fory-json-$PACKAGE.PlatformRoot.pro",
@@ -159,6 +188,7 @@ public class KspRetentionResourceTest {
         "META-INF/proguard/fory-json-$PACKAGE.PlatformSquare.pro",
         "META-INF/proguard/fory-json-mixin-$PACKAGE.PlatformJavaProfileMixin.pro",
         "META-INF/proguard/fory-json-mixin-$PACKAGE.PlatformDefaultMixin.pro",
+        "META-INF/proguard/fory-json-mixin-$PACKAGE.PlatformMixinDefaults.pro",
         "META-INF/proguard/fory-json-mixin-$PACKAGE.PlatformMixinOverrideAnnotations.pro",
       )
   }

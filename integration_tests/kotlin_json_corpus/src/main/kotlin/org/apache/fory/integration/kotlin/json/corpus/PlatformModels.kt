@@ -22,6 +22,7 @@ package org.apache.fory.integration.kotlin.json.corpus
 import kotlin.jvm.JvmInline
 import org.apache.fory.json.annotation.JsonByteArray
 import org.apache.fory.json.annotation.JsonCodec
+import org.apache.fory.json.annotation.JsonDefaultCodec
 import org.apache.fory.json.annotation.JsonInclude
 import org.apache.fory.json.annotation.JsonMixin
 import org.apache.fory.json.annotation.JsonProperty
@@ -93,6 +94,60 @@ public class PlatformTokenCodec : AbstractJsonValueCodec<PlatformToken>() {
     return PlatformToken(value)
   }
 }
+
+public class PlatformDefaultTokenCodec : AbstractJsonValueCodec<PlatformToken>() {
+  override fun write(writer: JsonWriter, value: PlatformToken?) {
+    if (value == null) writer.writeNull() else writer.writeString("t:" + value.value)
+  }
+
+  override fun read(reader: JsonReader): PlatformToken? {
+    val value = reader.readString() ?: return null
+    return PlatformToken(value.removePrefix("t:"))
+  }
+}
+
+@JsonType
+@JsonDefaultCodec(type = PlatformToken::class, codec = PlatformDefaultTokenCodec::class)
+public data class PlatformDefaultCodecs(
+  public val token: PlatformToken,
+  public val tokens: List<PlatformToken>,
+)
+
+@JsonDefaultCodec(type = PlatformToken::class, codec = PlatformDefaultTokenCodec::class)
+public abstract class PlatformDefaultBase
+
+@JsonType
+public data class PlatformInheritedDefaults(public val token: PlatformToken) :
+  PlatformDefaultBase()
+
+@JsonType
+@JsonDefaultCodec.List(
+  JsonDefaultCodec(type = PlatformToken::class, codec = PlatformDefaultTokenCodec::class)
+)
+public data class PlatformContainerDefaults(public val token: PlatformToken)
+
+public data class PlatformLabel(public val value: String)
+
+public class PlatformLabelCodec : AbstractJsonValueCodec<PlatformLabel>() {
+  override fun write(writer: JsonWriter, value: PlatformLabel?) {
+    if (value == null) writer.writeNull() else writer.writeString("l:" + value.value)
+  }
+
+  override fun read(reader: JsonReader): PlatformLabel? {
+    val value = reader.readString() ?: return null
+    return PlatformLabel(value.removePrefix("l:"))
+  }
+}
+
+public data class PlatformMixinDefaultsTarget(
+  public val token: PlatformToken,
+  public val label: PlatformLabel,
+)
+
+@JsonMixin(target = PlatformMixinDefaultsTarget::class)
+@JsonDefaultCodec(type = PlatformToken::class, codec = PlatformDefaultTokenCodec::class)
+@JsonDefaultCodec(type = PlatformLabel::class, codec = PlatformLabelCodec::class)
+public interface PlatformMixinDefaults
 
 @JsonSubTypes
 @JsonCodec(PlatformDirectOverrideCodec::class)
