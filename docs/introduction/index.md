@@ -113,7 +113,7 @@ optimized for analytics and partial-read workloads:
 - **Zero-copy random access**: Read fields, arrays, and nested values without rebuilding whole objects.
 - **Partial operations**: Read only the values needed for a query or pipeline stage.
 - **Apache Arrow integration**: Convert to columnar data for analytics pipelines.
-- **Multi-language support**: Exchange Standard Row Format data across Java, Python, C++, and Rust.
+- **Multi-language support**: Exchange Standard Row Format data across Java, Python, C++, Rust, and Swift.
 
 ### Optimized Fory Implementations
 

@@ -257,5 +257,5 @@ underlying bytes are not modified.
 ## Related Topics
 
 - [Basic Serialization](../object-serialization/go/basic-serialization.md) - Object graph serialization
-- [Standard Row Format](index.md#standard-row) - Shared layout for Java, Python, C++, Rust, and Go
+- [Standard Row Format](index.md#standard-row) - Shared layout for Java, Python, C++, Rust, Go, and Swift
 - [Row Format Specification](../specification/row_format_spec.md) - Protocol details

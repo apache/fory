@@ -66,6 +66,11 @@ let package = Package(
             dependencies: ["Fory"],
             path: "Tests/ForyXlangTests"
         ),
+        .executableTarget(
+            name: "ForyRowXlangPeer",
+            dependencies: ["Fory"],
+            path: "Tests/ForyRowXlangPeer"
+        ),
         .testTarget(
             name: "ForyTests",
             dependencies: [
