@@ -1460,8 +1460,8 @@ class GoGenerator(GoServiceGeneratorMixin, BaseGenerator):
     def collect_imports(self, field_type: FieldType, imports: Set[str]):
         """Collect required imports for a field type."""
         if isinstance(field_type, PrimitiveType):
+            # DATE maps to fory.Date and must not pull in the time package.
             if field_type.kind in (
-                PrimitiveKind.DATE,
                 PrimitiveKind.TIMESTAMP,
                 PrimitiveKind.DURATION,
             ):

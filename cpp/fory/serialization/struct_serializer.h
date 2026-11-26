@@ -972,8 +972,21 @@ void write_configured_list_data(const Container &coll, WriteContext &ctx) {
       header |= COLL_HAS_NULL;
     }
   }
+  // Mirror the ordinary collection writer: shared-ref elements keep their
+  // identity (COLL_TRACKING_REF + per-element ref flags) when global
+  // reference tracking is enabled; the configured read path already honors
+  // the bit.
+  bool tracking_refs = false;
+  if constexpr (is_shared_ref_v<Elem>) {
+    if (ctx.track_ref()) {
+      tracking_refs = true;
+      header |= COLL_TRACKING_REF;
+    }
+  }
   ctx.write_uint8(header);
-  const RefMode elem_ref_mode = has_null ? RefMode::NullOnly : RefMode::None;
+  const RefMode elem_ref_mode =
+      tracking_refs ? RefMode::Tracking
+                    : (has_null ? RefMode::NullOnly : RefMode::None);
   for (const auto &elem : coll) {
     if constexpr (ElemNode >= 0) {
       write_configured_value<Elem, StructT, Index, ElemNode>(
