@@ -107,6 +107,9 @@ This behavior also applies with `strict=True`: Fory does not import, generate,
 or instantiate the sender-named Python class. Register the matching class on a
 reader that should materialize the application type instead.
 
+To inspect compatible xlang data without application classes, see
+[Inspecting Serialized Data](inspection.md).
+
 ## Same-Schema Class Optimization
 
 Use `compatible=False` only when the class schema used to deserialize every payload is always the same
