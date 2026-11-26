@@ -20,8 +20,19 @@
 package org.apache.fory.util;
 
 import java.io.StringReader;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadInfo;
+import java.lang.reflect.Field;
+import java.util.AbstractMap;
+import java.util.AbstractSet;
 import java.util.Collections;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.TimeUnit;
 import org.apache.fory.Fory;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
@@ -60,6 +71,117 @@ public class ClassLoaderUtilsTest {
     byte[] bytes = fory.serialize(clz.newInstance());
     fory.deserialize(bytes);
     Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
+  }
+
+  @Test
+  public void testClassLoadingWaitsForCompleteBatch() throws Exception {
+    ByteArrayClassLoader loader =
+        new ByteArrayClassLoader(Collections.emptyMap(), getClass().getClassLoader());
+    CompileUnit parent =
+        new CompileUnit(
+            "generated.concurrent",
+            "Parent",
+            "package generated.concurrent; public class Parent {}");
+    CompileUnit child =
+        new CompileUnit(
+            "generated.concurrent",
+            "Child",
+            "package generated.concurrent; public class Child extends Parent {}");
+    Map<String, byte[]> bytecodes = JaninoUtils.toBytecode(loader, parent, child);
+    Map<String, byte[]> ordered = new LinkedHashMap<>();
+    ordered.put(
+        "generated/concurrent/Child.class", bytecodes.get("generated/concurrent/Child.class"));
+    ordered.put(
+        "generated/concurrent/Parent.class", bytecodes.get("generated/concurrent/Parent.class"));
+    CountDownLatch childAdded = new CountDownLatch(1);
+    CountDownLatch allowParent = new CountDownLatch(1);
+    Map<String, byte[]> pausedBatch =
+        new AbstractMap<String, byte[]>() {
+          @Override
+          public Set<Entry<String, byte[]>> entrySet() {
+            return new AbstractSet<Entry<String, byte[]>>() {
+              @Override
+              public int size() {
+                return ordered.size();
+              }
+
+              @Override
+              public Iterator<Entry<String, byte[]>> iterator() {
+                Iterator<Entry<String, byte[]>> entries = ordered.entrySet().iterator();
+                return new Iterator<Entry<String, byte[]>>() {
+                  int index;
+
+                  @Override
+                  public boolean hasNext() {
+                    return entries.hasNext();
+                  }
+
+                  @Override
+                  public Entry<String, byte[]> next() {
+                    if (index++ == 1) {
+                      childAdded.countDown();
+                      try {
+                        Assert.assertTrue(allowParent.await(10, TimeUnit.SECONDS));
+                      } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                        throw new IllegalStateException(e);
+                      }
+                    }
+                    return entries.next();
+                  }
+                };
+              }
+            };
+          }
+        };
+    Field classes = ByteArrayClassLoader.class.getDeclaredField("classes");
+    classes.setAccessible(true);
+    int monitor = System.identityHashCode(classes.get(loader));
+    FutureTask<Void> register =
+        new FutureTask<>(
+            () -> {
+              loader.addClasses(pausedBatch);
+              return null;
+            });
+    FutureTask<Class<?>> load =
+        new FutureTask<>(() -> loader.loadClass(child.getQualifiedClassName()));
+    Thread writer = new Thread(register, "register-bytecode"),
+        reader = new Thread(load, "load-bytecode");
+    writer.setDaemon(true);
+    reader.setDaemon(true);
+    try {
+      writer.start();
+      Assert.assertTrue(childAdded.await(10, TimeUnit.SECONDS));
+      reader.start();
+      boolean blocked = false;
+      long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+      while (System.nanoTime() < deadline && !load.isDone()) {
+        ThreadInfo info = ManagementFactory.getThreadMXBean().getThreadInfo(reader.getId());
+        if (info != null
+            && info.getThreadState() == Thread.State.BLOCKED
+            && info.getLockInfo() != null
+            && info.getLockInfo().getIdentityHashCode() == monitor) {
+          blocked = true;
+          break;
+        }
+        Thread.yield();
+      }
+      Assert.assertTrue(blocked, "Class loading must wait for the complete registered batch");
+      allowParent.countDown();
+      register.get(10, TimeUnit.SECONDS);
+      Assert.assertSame(
+          load.get(10, TimeUnit.SECONDS).getSuperclass(),
+          loader.loadClass(parent.getQualifiedClassName()));
+    } finally {
+      allowParent.countDown();
+      register.cancel(true);
+      load.cancel(true);
+      writer.interrupt();
+      reader.interrupt();
+      writer.join(2000);
+      reader.join(2000);
+      Assert.assertFalse(writer.isAlive() || reader.isAlive());
+    }
   }
 
   @Test

@@ -99,6 +99,7 @@ public class CodeGenerator {
   }
 
   private ClassLoader classLoader;
+  private boolean generatedClassLoaderInitialized;
   private final Object classLoaderLock;
   private final ConcurrentHashMap<String, CompileState> parallelCompileState;
   private final ConcurrentHashMap<String, DefineState> parallelDefineStatusLock;
@@ -190,15 +191,19 @@ public class CodeGenerator {
     }
     ClassLoader resultClassLoader;
     synchronized (classLoaderLock) {
-      // Initialize only once: shared definition state must refer to the same generated loader.
-      if (!(classLoader instanceof ByteArrayClassLoader)) {
-        ByteArrayClassLoader bytesClassLoader = new ByteArrayClassLoader(classes, classLoader);
+      // The supplied parent may itself be a ByteArrayClassLoader; it is not our generated loader.
+      // Initialize our own loader only once so shared definition state has one owner.
+      if (!generatedClassLoaderInitialized) {
+        // Emitted auxiliary classes must take precedence over same-named parent classes.
+        ByteArrayClassLoader bytesClassLoader =
+            new ByteArrayClassLoader(classes, classLoader, true);
         for (String k : classes.keySet()) {
           String className = fullClassNameFromClassFilePath(k);
           DefineState defineState = getDefineState(className);
           defineState.defined = true; // avoid duplicate def throws LinkError.
         }
         classLoader = bytesClassLoader;
+        generatedClassLoaderInitialized = true;
         return bytesClassLoader;
       }
       resultClassLoader = classLoader;

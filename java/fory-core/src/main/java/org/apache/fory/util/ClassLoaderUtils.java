@@ -240,13 +240,18 @@ public class ClassLoaderUtils {
 
     @Override
     protected Class<?> findClass(String name) throws ClassNotFoundException {
-      byte[] bytecodes = this.classes.get(name);
-      if (bytecodes == null) {
-        bytecodes = this.classes.get(name.replace('.', '/') + ".class");
+      byte[] bytecodes;
+      synchronized (classes) {
+        bytecodes = classes.get(name);
         if (bytecodes == null) {
-          throw new ClassNotFoundException(name);
+          bytecodes = classes.get(name.replace('.', '/') + ".class");
+          if (bytecodes == null) {
+            throw new ClassNotFoundException(name);
+          }
         }
       }
+      // Defining a subclass may acquire another class-loading lock for its superclass. Do not
+      // retain the batch-registration monitor across that operation.
       return super.defineClass(
           name, bytecodes, 0, bytecodes.length, this.getClass().getProtectionDomain());
     }
@@ -264,11 +269,23 @@ public class ClassLoaderUtils {
       }
     }
 
+    @Override
+    public URL getResource(String name) {
+      return childFirst ? parent.getResource(name) : super.getResource(name);
+    }
+
+    @Override
+    public Enumeration<URL> getResources(String name) throws IOException {
+      return childFirst ? parent.getResources(name) : super.getResources(name);
+    }
+
     /** Registers a complete batch before loading classes that may depend on one another. */
     @Internal
     public void addClasses(Map<String, byte[]> newClasses) {
-      for (Map.Entry<String, byte[]> entry : newClasses.entrySet()) {
-        classes.putIfAbsent(entry.getKey(), entry.getValue());
+      synchronized (classes) {
+        for (Map.Entry<String, byte[]> entry : newClasses.entrySet()) {
+          classes.putIfAbsent(entry.getKey(), entry.getValue());
+        }
       }
     }
 

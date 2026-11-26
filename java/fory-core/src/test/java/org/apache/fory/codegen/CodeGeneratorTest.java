@@ -30,6 +30,7 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -53,6 +54,7 @@ import org.apache.fory.util.ClassLoaderUtils.ByteArrayClassLoader;
 import org.apache.fory.util.ClassLoaderUtils.ForyJarClassLoader;
 import org.apache.fory.util.DelayedRef;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
@@ -137,6 +139,62 @@ public class CodeGeneratorTest {
         sharedCodeGenerator2
             .get(new Object[] {ForyJarClassLoader.getInstance(), getClass().getClassLoader()})
             .get());
+  }
+
+  @Test
+  public void testGeneratedLoaderPreservesParentResources() throws Exception {
+    ClassLoader parent = getClass().getClassLoader();
+    ClassLoader loader =
+        new CodeGenerator(parent)
+            .compile(
+                new CompileUnit(
+                    "generated.resources",
+                    "Warmup",
+                    "package generated.resources; public class Warmup {}"));
+    String resource = CodeGenerator.class.getName().replace('.', '/') + ".class";
+    assertNotNull(parent.getResource(resource));
+    Assert.assertEquals(loader.getResource(resource), parent.getResource(resource));
+    Assert.assertEquals(
+        Collections.list(loader.getResources(resource)),
+        Collections.list(parent.getResources(resource)));
+  }
+
+  @DataProvider(name = "parentLoaderKinds")
+  public static Object[][] parentLoaderKinds() {
+    return new Object[][] {{false}, {true}};
+  }
+
+  @Test(dataProvider = "parentLoaderKinds")
+  public void testGeneratedAuxiliaryClassShadowsParent(boolean byteArrayParent) throws Exception {
+    CompileUnit parentHelper =
+        new CompileUnit(
+            "generated.shadow",
+            "Helper",
+            "package generated.shadow; public class Helper { public static String parentOnly() { return \"parent\"; } }");
+    ByteArrayClassLoader parentBytes =
+        new ByteArrayClassLoader(
+            JaninoUtils.toBytecode(getClass().getClassLoader(), parentHelper),
+            getClass().getClassLoader());
+    parentBytes.loadClass(parentHelper.getQualifiedClassName());
+    ClassLoader parent =
+        byteArrayParent
+            ? new ByteArrayClassLoader(Collections.emptyMap(), parentBytes)
+            : new ClassLoader(parentBytes) {};
+    CodeGenerator generator = new CodeGenerator(parent);
+    ClassLoader loader =
+        generator.compile(
+            new CompileUnit(
+                "generated.shadow", "Warmup", "package generated.shadow; public class Warmup {}"));
+    CompileUnit main =
+        new CompileUnit(
+            "generated.shadow",
+            "Main",
+            "package generated.shadow; public class Main { public static String call() { return Helper.generatedOnly(); } } class Helper { public static String generatedOnly() { return \"generated\"; } }");
+    Assert.assertSame(generator.compile(main), loader);
+    Assert.assertEquals(
+        loader.loadClass(main.getQualifiedClassName()).getMethod("call").invoke(null), "generated");
+    Assert.assertSame(
+        loader.loadClass(parentHelper.getQualifiedClassName()).getClassLoader(), loader);
   }
 
   @Test
