@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.platform.AndroidSupport;
@@ -260,6 +261,14 @@ public class ClassLoaderUtils {
         }
       } else {
         return super.loadClass(name, resolve);
+      }
+    }
+
+    /** Registers a complete batch before loading classes that may depend on one another. */
+    @Internal
+    public void addClasses(Map<String, byte[]> newClasses) {
+      for (Map.Entry<String, byte[]> entry : newClasses.entrySet()) {
+        classes.putIfAbsent(entry.getKey(), entry.getValue());
       }
     }
 

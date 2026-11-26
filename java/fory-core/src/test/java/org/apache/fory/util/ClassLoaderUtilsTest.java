@@ -20,9 +20,12 @@
 package org.apache.fory.util;
 
 import java.io.StringReader;
+import java.util.Collections;
+import java.util.Map;
 import org.apache.fory.Fory;
 import org.apache.fory.codegen.CompileUnit;
 import org.apache.fory.codegen.JaninoUtils;
+import org.apache.fory.util.ClassLoaderUtils.ByteArrayClassLoader;
 import org.codehaus.janino.SimpleCompiler;
 import org.testng.Assert;
 import org.testng.annotations.DataProvider;
@@ -57,6 +60,25 @@ public class ClassLoaderUtilsTest {
     byte[] bytes = fory.serialize(clz.newInstance());
     fory.deserialize(bytes);
     Thread.currentThread().setContextClassLoader(getClass().getClassLoader());
+  }
+
+  @Test
+  public void testAddClassesPreservesRegisteredBytecode() throws Exception {
+    ByteArrayClassLoader loader =
+        new ByteArrayClassLoader(Collections.emptyMap(), getClass().getClassLoader());
+    String prefix =
+        "package generated.loader; public class Value { public static int value() { return ";
+    Map<String, byte[]> first =
+        JaninoUtils.toBytecode(
+            loader, new CompileUnit("generated.loader", "Value", prefix + "1; } }"));
+    Map<String, byte[]> replacement =
+        JaninoUtils.toBytecode(
+            loader, new CompileUnit("generated.loader", "Value", prefix + "2; } }"));
+    loader.addClasses(first);
+    loader.addClasses(replacement);
+    Class<?> value = loader.loadClass("generated.loader.Value");
+    Assert.assertSame(value.getClassLoader(), loader);
+    Assert.assertEquals(value.getMethod("value").invoke(null), Integer.valueOf(1));
   }
 
   @DataProvider(name = "packages")

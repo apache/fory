@@ -31,6 +31,7 @@ import java.lang.reflect.Method;
 import java.net.URLClassLoader;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
@@ -136,6 +137,41 @@ public class CodeGeneratorTest {
         sharedCodeGenerator2
             .get(new Object[] {ForyJarClassLoader.getInstance(), getClass().getClassLoader()})
             .get());
+  }
+
+  @Test
+  public void testDefineBatchWithGeneratedSuperclassAfterInitialization() throws Exception {
+    CodeGenerator generator = new CodeGenerator(getClass().getClassLoader());
+    ClassLoader loader =
+        generator.compile(
+            new CompileUnit(
+                "generated.dependencies",
+                "Warmup",
+                "package generated.dependencies; public class Warmup {}"));
+    CompileUnit parent =
+        new CompileUnit(
+            "generated.dependencies",
+            "Parent",
+            "package generated.dependencies; public class Parent {}");
+    CompileUnit child =
+        new CompileUnit(
+            "generated.dependencies",
+            "Child",
+            "package generated.dependencies; public class Child extends Parent {}");
+    Map<String, byte[]> bytecode = JaninoUtils.toBytecode(loader, parent, child);
+    Map<String, byte[]> childFirst = new LinkedHashMap<>();
+    childFirst.put(
+        CodeGenerator.classFilepath(child), bytecode.get(CodeGenerator.classFilepath(child)));
+    childFirst.put(
+        CodeGenerator.classFilepath(parent), bytecode.get(CodeGenerator.classFilepath(parent)));
+    // A competing compilation can finish after the initial loader is published. Its superclass
+    // must be resolvable even when the emitted batch visits the subclass first.
+    Method defineClasses = CodeGenerator.class.getDeclaredMethod("defineClasses", Map.class);
+    defineClasses.setAccessible(true);
+    Assert.assertSame(defineClasses.invoke(generator, childFirst), loader);
+    Assert.assertSame(
+        loader.loadClass(child.getQualifiedClassName()).getSuperclass(),
+        loader.loadClass(parent.getQualifiedClassName()));
   }
 
   @Test

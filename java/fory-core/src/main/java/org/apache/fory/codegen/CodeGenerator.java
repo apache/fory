@@ -203,6 +203,8 @@ public class CodeGenerator {
       }
       resultClassLoader = classLoader;
     }
+    // Publish the whole batch before a subclass can trigger loading its generated superclass.
+    ((ByteArrayClassLoader) resultClassLoader).addClasses(classes);
     for (Map.Entry<String, byte[]> entry : classes.entrySet()) {
       String className = fullClassNameFromClassFilePath(entry.getKey());
       DefineState defineState = getDefineState(className);
@@ -210,10 +212,13 @@ public class CodeGenerator {
       if (!defineState.defined) { // class not defined yet.
         synchronized (defineState.lock) {
           if (!defineState.defined) { // class not defined yet.
-            // Even if multiple compile unit is inter-dependent, they can still be defined
-            // separately. Keep class-definition locks outside classLoaderLock.
-            ((ByteArrayClassLoader) resultClassLoader)
-                .defineClassPublic(className, entry.getValue());
+            // Class loading may define a superclass from this batch before its own entry is
+            // visited. Reuse that class instead of trying to define it a second time.
+            try {
+              resultClassLoader.loadClass(className);
+            } catch (ClassNotFoundException e) {
+              throw new IllegalStateException("Impossible because we just compiled class", e);
+            }
             defineState.defined = true;
           }
         }
