@@ -223,7 +223,7 @@ public final class ScalarCodecs {
         reader.readNull();
         return null;
       }
-      return reader.readNumber();
+      return reader.readNaturalNumber();
     }
 
     @Override
@@ -241,7 +241,7 @@ public final class ScalarCodecs {
         reader.readNull();
         return null;
       }
-      return reader.readNumber();
+      return reader.readNaturalNumber();
     }
 
     @Override
@@ -259,7 +259,7 @@ public final class ScalarCodecs {
         reader.readNull();
         return null;
       }
-      return reader.readNumber();
+      return reader.readNaturalNumber();
     }
   }
 
