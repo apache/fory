@@ -250,10 +250,30 @@ public class ClassLoaderUtils {
           }
         }
       }
+      definePackageIfNeeded(name);
       // Defining a subclass may acquire another class-loading lock for its superclass. Do not
       // retain the batch-registration monitor across that operation.
       return super.defineClass(
           name, bytecodes, 0, bytecodes.length, this.getClass().getProtectionDomain());
+    }
+
+    private void definePackageIfNeeded(String className) {
+      int separator = className.lastIndexOf('.');
+      if (separator < 0) {
+        return;
+      }
+      String packageName = className.substring(0, separator);
+      // Java 8 does not create package metadata automatically for byte-array definitions.
+      if (getPackage(packageName) == null) {
+        try {
+          definePackage(packageName, null, null, null, null, null, null, null);
+        } catch (IllegalArgumentException e) {
+          // A different class in the same package may have won the concurrent definition.
+          if (getPackage(packageName) == null) {
+            throw e;
+          }
+        }
+      }
     }
 
     @Override

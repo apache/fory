@@ -254,7 +254,9 @@ public class CodeGeneratorTest {
                   () -> {
                     assertTrue(start.await(10, TimeUnit.SECONDS));
                     ClassLoader loader = generator.compile(unit);
-                    loader.loadClass(unit.getQualifiedClassName());
+                    Class<?> generated = loader.loadClass(unit.getQualifiedClassName());
+                    assertNotNull(generated.getPackage());
+                    Assert.assertEquals(generated.getPackage().getName(), "concurrent.codegen");
                     return loader;
                   }));
         }
