@@ -99,6 +99,7 @@ public class CodeGenerator {
   }
 
   private ClassLoader classLoader;
+  private boolean generatedClassLoaderInitialized;
   private final Object classLoaderLock;
   private final ConcurrentHashMap<String, CompileState> parallelCompileState;
   private final ConcurrentHashMap<String, DefineState> parallelDefineStatusLock;
@@ -188,42 +189,44 @@ public class CodeGenerator {
     if (classes.isEmpty()) {
       return getClassLoader();
     }
-    ClassLoader resultClassLoader = null;
-    boolean isByteArrayClassLoader;
+    ClassLoader resultClassLoader;
     synchronized (classLoaderLock) {
-      isByteArrayClassLoader = classLoader instanceof ByteArrayClassLoader;
-      if (isByteArrayClassLoader) {
-        resultClassLoader = classLoader;
-      }
-    }
-    if (isByteArrayClassLoader) {
-      for (Map.Entry<String, byte[]> entry : classes.entrySet()) {
-        String className = fullClassNameFromClassFilePath(entry.getKey());
-        DefineState defineState = getDefineState(className);
-        // Avoid multi-compile unit classes define operation collision with single compile unit.
-        if (!defineState.defined) { // class not defined yet.
-          synchronized (defineState.lock) {
-            if (!defineState.defined) { // class not defined yet.
-              // Even if multiple compile unit is inter-dependent, they can still be defined
-              // separately.
-              ((ByteArrayClassLoader) (resultClassLoader))
-                  .defineClassPublic(className, entry.getValue());
-              defineState.defined = true;
-            }
-          }
-        }
-      }
-    } else {
-      synchronized (classLoaderLock) {
-        ByteArrayClassLoader bytesClassLoader = new ByteArrayClassLoader(classes, classLoader);
+      // The supplied parent may itself be a ByteArrayClassLoader; it is not our generated loader.
+      // Initialize our own loader only once so shared definition state has one owner.
+      if (!generatedClassLoaderInitialized) {
+        // Emitted auxiliary classes must take precedence over same-named parent classes.
+        ByteArrayClassLoader bytesClassLoader =
+            new ByteArrayClassLoader(classes, classLoader, true);
         for (String k : classes.keySet()) {
           String className = fullClassNameFromClassFilePath(k);
           DefineState defineState = getDefineState(className);
           defineState.defined = true; // avoid duplicate def throws LinkError.
         }
-        // Set up a class loader that finds and defined the generated classes.
         classLoader = bytesClassLoader;
-        resultClassLoader = bytesClassLoader;
+        generatedClassLoaderInitialized = true;
+        return bytesClassLoader;
+      }
+      resultClassLoader = classLoader;
+    }
+    // Publish the whole batch before a subclass can trigger loading its generated superclass.
+    ((ByteArrayClassLoader) resultClassLoader).addClasses(classes);
+    for (Map.Entry<String, byte[]> entry : classes.entrySet()) {
+      String className = fullClassNameFromClassFilePath(entry.getKey());
+      DefineState defineState = getDefineState(className);
+      // Avoid multi-compile unit classes define operation collision with single compile unit.
+      if (!defineState.defined) { // class not defined yet.
+        synchronized (defineState.lock) {
+          if (!defineState.defined) { // class not defined yet.
+            // Class loading may define a superclass from this batch before its own entry is
+            // visited. Reuse that class instead of trying to define it a second time.
+            try {
+              resultClassLoader.loadClass(className);
+            } catch (ClassNotFoundException e) {
+              throw new IllegalStateException("Impossible because we just compiled class", e);
+            }
+            defineState.defined = true;
+          }
+        }
       }
     }
     return resultClassLoader;

@@ -29,11 +29,17 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -48,6 +54,7 @@ import org.apache.fory.util.ClassLoaderUtils.ByteArrayClassLoader;
 import org.apache.fory.util.ClassLoaderUtils.ForyJarClassLoader;
 import org.apache.fory.util.DelayedRef;
 import org.testng.Assert;
+import org.testng.annotations.DataProvider;
 import org.testng.annotations.Test;
 
 @SuppressWarnings({"rawtypes", "unchecked"})
@@ -132,6 +139,141 @@ public class CodeGeneratorTest {
         sharedCodeGenerator2
             .get(new Object[] {ForyJarClassLoader.getInstance(), getClass().getClassLoader()})
             .get());
+  }
+
+  @Test
+  public void testGeneratedLoaderPreservesParentResources() throws Exception {
+    ClassLoader parent = getClass().getClassLoader();
+    ClassLoader loader =
+        new CodeGenerator(parent)
+            .compile(
+                new CompileUnit(
+                    "generated.resources",
+                    "Warmup",
+                    "package generated.resources; public class Warmup {}"));
+    String resource = CodeGenerator.class.getName().replace('.', '/') + ".class";
+    assertNotNull(parent.getResource(resource));
+    Assert.assertEquals(loader.getResource(resource), parent.getResource(resource));
+    Assert.assertEquals(
+        Collections.list(loader.getResources(resource)),
+        Collections.list(parent.getResources(resource)));
+  }
+
+  @DataProvider(name = "parentLoaderKinds")
+  public static Object[][] parentLoaderKinds() {
+    return new Object[][] {{false}, {true}};
+  }
+
+  @Test(dataProvider = "parentLoaderKinds")
+  public void testGeneratedAuxiliaryClassShadowsParent(boolean byteArrayParent) throws Exception {
+    CompileUnit parentHelper =
+        new CompileUnit(
+            "generated.shadow",
+            "Helper",
+            "package generated.shadow; public class Helper { public static String parentOnly() { return \"parent\"; } }");
+    ByteArrayClassLoader parentBytes =
+        new ByteArrayClassLoader(
+            JaninoUtils.toBytecode(getClass().getClassLoader(), parentHelper),
+            getClass().getClassLoader());
+    parentBytes.loadClass(parentHelper.getQualifiedClassName());
+    ClassLoader parent =
+        byteArrayParent
+            ? new ByteArrayClassLoader(Collections.emptyMap(), parentBytes)
+            : new ClassLoader(parentBytes) {};
+    CodeGenerator generator = new CodeGenerator(parent);
+    ClassLoader loader =
+        generator.compile(
+            new CompileUnit(
+                "generated.shadow", "Warmup", "package generated.shadow; public class Warmup {}"));
+    CompileUnit main =
+        new CompileUnit(
+            "generated.shadow",
+            "Main",
+            "package generated.shadow; public class Main { public static String call() { return Helper.generatedOnly(); } } class Helper { public static String generatedOnly() { return \"generated\"; } }");
+    Assert.assertSame(generator.compile(main), loader);
+    Assert.assertEquals(
+        loader.loadClass(main.getQualifiedClassName()).getMethod("call").invoke(null), "generated");
+    Assert.assertSame(
+        loader.loadClass(parentHelper.getQualifiedClassName()).getClassLoader(), loader);
+  }
+
+  @Test
+  public void testDefineBatchWithGeneratedSuperclassAfterInitialization() throws Exception {
+    CodeGenerator generator = new CodeGenerator(getClass().getClassLoader());
+    ClassLoader loader =
+        generator.compile(
+            new CompileUnit(
+                "generated.dependencies",
+                "Warmup",
+                "package generated.dependencies; public class Warmup {}"));
+    CompileUnit parent =
+        new CompileUnit(
+            "generated.dependencies",
+            "Parent",
+            "package generated.dependencies; public class Parent {}");
+    CompileUnit child =
+        new CompileUnit(
+            "generated.dependencies",
+            "Child",
+            "package generated.dependencies; public class Child extends Parent {}");
+    Map<String, byte[]> bytecode = JaninoUtils.toBytecode(loader, parent, child);
+    Map<String, byte[]> childFirst = new LinkedHashMap<>();
+    childFirst.put(
+        CodeGenerator.classFilepath(child), bytecode.get(CodeGenerator.classFilepath(child)));
+    childFirst.put(
+        CodeGenerator.classFilepath(parent), bytecode.get(CodeGenerator.classFilepath(parent)));
+    // A competing compilation can finish after the initial loader is published. Its superclass
+    // must be resolvable even when the emitted batch visits the subclass first.
+    Method defineClasses = CodeGenerator.class.getDeclaredMethod("defineClasses", Map.class);
+    defineClasses.setAccessible(true);
+    Assert.assertSame(defineClasses.invoke(generator, childFirst), loader);
+    Assert.assertSame(
+        loader.loadClass(child.getQualifiedClassName()).getSuperclass(),
+        loader.loadClass(parent.getQualifiedClassName()));
+  }
+
+  @Test
+  public void testConcurrentFirstCompilationUsesSingleClassLoader() throws Exception {
+    int threadCount = 16;
+    ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+    try {
+      for (int round = 0; round < 100; round++) {
+        // Existing duplicate-compile coverage starts with a ByteArrayClassLoader already installed.
+        CodeGenerator generator = new CodeGenerator(getClass().getClassLoader());
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<ClassLoader>> futures = new ArrayList<>();
+        for (int i = 0; i < threadCount; i++) {
+          String name = "FirstCompile" + i % 4;
+          CompileUnit unit =
+              new CompileUnit(
+                  "concurrent.codegen",
+                  name,
+                  "package concurrent.codegen; public class " + name + " {}");
+          futures.add(
+              executor.submit(
+                  () -> {
+                    assertTrue(start.await(10, TimeUnit.SECONDS));
+                    ClassLoader loader = generator.compile(unit);
+                    Class<?> generated = loader.loadClass(unit.getQualifiedClassName());
+                    assertNotNull(generated.getPackage());
+                    Assert.assertEquals(generated.getPackage().getName(), "concurrent.codegen");
+                    return loader;
+                  }));
+        }
+        start.countDown();
+        List<ClassLoader> loaders = new ArrayList<>();
+        for (Future<ClassLoader> future : futures) {
+          loaders.add(future.get(30, TimeUnit.SECONDS));
+        }
+        ClassLoader current = generator.getClassLoader();
+        for (ClassLoader loader : loaders) {
+          Assert.assertSame(loader, current, "Concurrent first compiles must share one loader");
+        }
+      }
+    } finally {
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS));
+    }
   }
 
   @Test

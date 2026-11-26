@@ -34,6 +34,7 @@ import java.util.Objects;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.fory.Fory;
+import org.apache.fory.annotation.Internal;
 import org.apache.fory.logging.Logger;
 import org.apache.fory.logging.LoggerFactory;
 import org.apache.fory.platform.AndroidSupport;
@@ -239,15 +240,40 @@ public class ClassLoaderUtils {
 
     @Override
     protected Class<?> findClass(String name) throws ClassNotFoundException {
-      byte[] bytecodes = this.classes.get(name);
-      if (bytecodes == null) {
-        bytecodes = this.classes.get(name.replace('.', '/') + ".class");
+      byte[] bytecodes;
+      synchronized (classes) {
+        bytecodes = classes.get(name);
         if (bytecodes == null) {
-          throw new ClassNotFoundException(name);
+          bytecodes = classes.get(name.replace('.', '/') + ".class");
+          if (bytecodes == null) {
+            throw new ClassNotFoundException(name);
+          }
         }
       }
+      definePackageIfNeeded(name);
+      // Defining a subclass may acquire another class-loading lock for its superclass. Do not
+      // retain the batch-registration monitor across that operation.
       return super.defineClass(
           name, bytecodes, 0, bytecodes.length, this.getClass().getProtectionDomain());
+    }
+
+    private void definePackageIfNeeded(String className) {
+      int separator = className.lastIndexOf('.');
+      if (separator < 0) {
+        return;
+      }
+      String packageName = className.substring(0, separator);
+      // Java 8 does not create package metadata automatically for byte-array definitions.
+      if (getPackage(packageName) == null) {
+        try {
+          definePackage(packageName, null, null, null, null, null, null, null);
+        } catch (IllegalArgumentException e) {
+          // A different class in the same package may have won the concurrent definition.
+          if (getPackage(packageName) == null) {
+            throw e;
+          }
+        }
+      }
     }
 
     @Override
@@ -260,6 +286,26 @@ public class ClassLoaderUtils {
         }
       } else {
         return super.loadClass(name, resolve);
+      }
+    }
+
+    @Override
+    public URL getResource(String name) {
+      return childFirst ? parent.getResource(name) : super.getResource(name);
+    }
+
+    @Override
+    public Enumeration<URL> getResources(String name) throws IOException {
+      return childFirst ? parent.getResources(name) : super.getResources(name);
+    }
+
+    /** Registers a complete batch before loading classes that may depend on one another. */
+    @Internal
+    public void addClasses(Map<String, byte[]> newClasses) {
+      synchronized (classes) {
+        for (Map.Entry<String, byte[]> entry : newClasses.entrySet()) {
+          classes.putIfAbsent(entry.getKey(), entry.getValue());
+        }
       }
     }
 
