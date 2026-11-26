@@ -25,6 +25,10 @@ namespace Apache.Fory;
 /// This type is optimized for single-threaded reuse and must not be shared concurrently across threads.
 /// Use <see cref="ThreadSafeFory"/> for concurrent access.
 /// </summary>
+/// <remarks>
+/// Register all types and serializers before the first serialization or deserialization operation.
+/// Later registration throws <see cref="InvalidOperationException"/>, even if that operation failed.
+/// </remarks>
 public sealed class Fory
 {
     private readonly TypeResolver _typeResolver;
@@ -155,6 +159,7 @@ public sealed class Fory
     /// <returns>Serialized bytes.</returns>
     public byte[] Serialize<T>(in T value)
     {
+        _typeResolver.FreezeRegistration();
         ByteWriter writer = _writeContext.Writer;
         writer.Reset();
         Serializer<T> serializer = _typeResolver.GetSerializer<T>();
@@ -188,6 +193,7 @@ public sealed class Fory
     /// <exception cref="InvalidDataException">Thrown when trailing bytes remain after decoding.</exception>
     public T Deserialize<T>(ReadOnlySpan<byte> payload)
     {
+        _typeResolver.FreezeRegistration();
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
         T value = DeserializeFromReader<T>(reader);
@@ -208,6 +214,7 @@ public sealed class Fory
     /// <exception cref="InvalidDataException">Thrown when trailing bytes remain after decoding.</exception>
     public T Deserialize<T>(byte[] payload)
     {
+        _typeResolver.FreezeRegistration();
         ByteReader reader = _readContext.Reader;
         reader.Reset(payload);
         T value = DeserializeFromReader<T>(reader);

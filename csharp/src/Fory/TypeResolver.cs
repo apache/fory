@@ -110,6 +110,7 @@ public sealed class TypeResolver
     private readonly UInt64Map<TypeInfo> _typeInfos = new();
     private ulong _versionHash;
     private bool _finalized;
+    private bool _registrationFrozen;
 
     /// <summary>
     /// Registers a generated enum or union serializer factory for a runtime target type.
@@ -488,6 +489,7 @@ public sealed class TypeResolver
     internal TypeInfo RegisterSerializer<T, TSerializer>()
         where TSerializer : Serializer<T>, new()
     {
+        EnsureRegistrationOpen();
         TypeInfo typeInfo = TypeInfo.Create(typeof(T), new TSerializer());
         RegisterSerializer(typeof(T), typeInfo);
         return typeInfo;
@@ -495,11 +497,13 @@ public sealed class TypeResolver
 
     internal void RegisterSerializer(Type type, TypeInfo typeInfo)
     {
+        EnsureRegistrationOpen();
         GetOrCreateTypeInfo(type, typeInfo);
     }
 
     internal void Register(Type type, uint id, TypeInfo? explicitTypeInfo = null)
     {
+        EnsureRegistrationOpen();
         TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitTypeInfo).WithTypeIdRegistration(id);
         _typeInfos.Set(TypeMapKey.Get(type), typeInfo);
         _byUserTypeId[id] = typeInfo;
@@ -542,6 +546,7 @@ public sealed class TypeResolver
 
     internal void Register(Type type, string namespaceName, string typeName, TypeInfo? explicitTypeInfo = null)
     {
+        EnsureRegistrationOpen();
         ValidateSplitTypeName(namespaceName, typeName);
         TypeInfo typeInfo = GetOrCreateTypeInfo(type, explicitTypeInfo);
         MetaString namespaceMeta = MetaStringEncoder.Namespace.Encode(namespaceName, TypeMetaEncodings.NamespaceMetaStringEncodings);
@@ -550,6 +555,29 @@ public sealed class TypeResolver
         _typeInfos.Set(TypeMapKey.Get(type), typeInfo);
         _byTypeName[(namespaceName, typeName)] = typeInfo;
         InvalidateFinalizedVersion();
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    internal void FreezeRegistration()
+    {
+        // Freeze before root work: even a failed operation can populate serializer caches.
+        // Lazy built-in bindings may still be created; explicit registration cannot change them.
+        _registrationFrozen = true;
+    }
+
+    private void EnsureRegistrationOpen()
+    {
+        if (_registrationFrozen)
+        {
+            ThrowRegistrationFrozen();
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    internal static void ThrowRegistrationFrozen()
+    {
+        throw new InvalidOperationException(
+            "type and serializer registration must complete before the first serialization or deserialization operation");
     }
 
     /// <summary>
