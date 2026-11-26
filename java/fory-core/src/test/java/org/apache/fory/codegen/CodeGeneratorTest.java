@@ -29,11 +29,15 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URLClassLoader;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.WeakHashMap;
+import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
 import java.util.concurrent.ThreadPoolExecutor;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -132,6 +136,48 @@ public class CodeGeneratorTest {
         sharedCodeGenerator2
             .get(new Object[] {ForyJarClassLoader.getInstance(), getClass().getClassLoader()})
             .get());
+  }
+
+  @Test
+  public void testConcurrentFirstCompilationUsesSingleClassLoader() throws Exception {
+    int threadCount = 16;
+    ExecutorService executor = Executors.newFixedThreadPool(threadCount);
+    try {
+      for (int round = 0; round < 100; round++) {
+        // Existing duplicate-compile coverage starts with a ByteArrayClassLoader already installed.
+        CodeGenerator generator = new CodeGenerator(getClass().getClassLoader());
+        CountDownLatch start = new CountDownLatch(1);
+        List<Future<ClassLoader>> futures = new ArrayList<>();
+        for (int i = 0; i < threadCount; i++) {
+          String name = "FirstCompile" + i % 4;
+          CompileUnit unit =
+              new CompileUnit(
+                  "concurrent.codegen",
+                  name,
+                  "package concurrent.codegen; public class " + name + " {}");
+          futures.add(
+              executor.submit(
+                  () -> {
+                    assertTrue(start.await(10, TimeUnit.SECONDS));
+                    ClassLoader loader = generator.compile(unit);
+                    loader.loadClass(unit.getQualifiedClassName());
+                    return loader;
+                  }));
+        }
+        start.countDown();
+        List<ClassLoader> loaders = new ArrayList<>();
+        for (Future<ClassLoader> future : futures) {
+          loaders.add(future.get(30, TimeUnit.SECONDS));
+        }
+        ClassLoader current = generator.getClassLoader();
+        for (ClassLoader loader : loaders) {
+          Assert.assertSame(loader, current, "Concurrent first compiles must share one loader");
+        }
+      }
+    } finally {
+      executor.shutdownNow();
+      assertTrue(executor.awaitTermination(30, TimeUnit.SECONDS));
+    }
   }
 
   @Test

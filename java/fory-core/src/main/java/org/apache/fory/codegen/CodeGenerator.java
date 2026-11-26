@@ -188,42 +188,35 @@ public class CodeGenerator {
     if (classes.isEmpty()) {
       return getClassLoader();
     }
-    ClassLoader resultClassLoader = null;
-    boolean isByteArrayClassLoader;
+    ClassLoader resultClassLoader;
     synchronized (classLoaderLock) {
-      isByteArrayClassLoader = classLoader instanceof ByteArrayClassLoader;
-      if (isByteArrayClassLoader) {
-        resultClassLoader = classLoader;
-      }
-    }
-    if (isByteArrayClassLoader) {
-      for (Map.Entry<String, byte[]> entry : classes.entrySet()) {
-        String className = fullClassNameFromClassFilePath(entry.getKey());
-        DefineState defineState = getDefineState(className);
-        // Avoid multi-compile unit classes define operation collision with single compile unit.
-        if (!defineState.defined) { // class not defined yet.
-          synchronized (defineState.lock) {
-            if (!defineState.defined) { // class not defined yet.
-              // Even if multiple compile unit is inter-dependent, they can still be defined
-              // separately.
-              ((ByteArrayClassLoader) (resultClassLoader))
-                  .defineClassPublic(className, entry.getValue());
-              defineState.defined = true;
-            }
-          }
-        }
-      }
-    } else {
-      synchronized (classLoaderLock) {
+      // Initialize only once: shared definition state must refer to the same generated loader.
+      if (!(classLoader instanceof ByteArrayClassLoader)) {
         ByteArrayClassLoader bytesClassLoader = new ByteArrayClassLoader(classes, classLoader);
         for (String k : classes.keySet()) {
           String className = fullClassNameFromClassFilePath(k);
           DefineState defineState = getDefineState(className);
           defineState.defined = true; // avoid duplicate def throws LinkError.
         }
-        // Set up a class loader that finds and defined the generated classes.
         classLoader = bytesClassLoader;
-        resultClassLoader = bytesClassLoader;
+        return bytesClassLoader;
+      }
+      resultClassLoader = classLoader;
+    }
+    for (Map.Entry<String, byte[]> entry : classes.entrySet()) {
+      String className = fullClassNameFromClassFilePath(entry.getKey());
+      DefineState defineState = getDefineState(className);
+      // Avoid multi-compile unit classes define operation collision with single compile unit.
+      if (!defineState.defined) { // class not defined yet.
+        synchronized (defineState.lock) {
+          if (!defineState.defined) { // class not defined yet.
+            // Even if multiple compile unit is inter-dependent, they can still be defined
+            // separately. Keep class-definition locks outside classLoaderLock.
+            ((ByteArrayClassLoader) resultClassLoader)
+                .defineClassPublic(className, entry.getValue());
+            defineState.defined = true;
+          }
+        }
       }
     }
     return resultClassLoader;
