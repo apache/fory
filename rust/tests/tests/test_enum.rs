@@ -129,6 +129,45 @@ fn named_enum() {
     assert_eq!(value1, value2);
 }
 
+/// Test [issue 4177](https://github.com/apache/fory/issues/4177).
+#[test]
+fn native_union() {
+    use fory_core::serializer::Serializer;
+    use fory_core::type_id::TypeId;
+
+    // Without `native`, this unit/single-payload shape selects the xlang UNION
+    // category and requires an unknown-case carrier.
+    #[derive(ForyUnion, Debug, PartialEq)]
+    #[fory(native)]
+    enum Event {
+        #[fory(default)]
+        Empty,
+        Text(String),
+        Code {
+            value: i32,
+        },
+    }
+
+    assert_eq!(Event::static_type_id(), TypeId::ENUM);
+
+    for compatible in [false, true] {
+        let mut fory = Fory::builder().xlang(false).compatible(compatible).build();
+        assert!(fory.register_union::<Event>(1001).is_err()); // register_union only accepts TypeId::UNION.
+        fory.register::<Event>(1001).unwrap();
+        for event in [
+            Event::Empty,
+            Event::Text("text".to_string()),
+            Event::Code { value: 3 },
+        ] {
+            let bytes = fory.serialize(&event).unwrap();
+            assert_eq!(fory.deserialize::<Event>(&bytes).unwrap(), event);
+        }
+    }
+
+    let mut fory = Fory::builder().xlang(true).build();
+    assert!(fory.register::<Event>(1001).is_err());
+}
+
 /// Test that struct with enum field serializes correctly.
 #[test]
 fn struct_with_enum_field() {
